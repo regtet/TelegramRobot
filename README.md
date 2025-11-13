@@ -1,7 +1,7 @@
 # WG-WEB Telegram 自动打包机器人
 
 通过 Telegram 消息触发 WG-WEB 项目的自动打包和分发。
-
+![主界面截图](./image.png)
 **⚠️ 当前使用用户账号模式（User Bot），可发送最大 2GB 的文件！**
 
 ## 功能特性
