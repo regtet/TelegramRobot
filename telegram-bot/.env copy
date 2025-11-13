@@ -1,0 +1,16 @@
+
+# Telegram 用户账号配置
+API_ID=xxx
+API_HASH=xxxx
+PHONE_NUMBER=+xxx
+CHAT_ID=xxx # 个人
+#  CHAT_ID=-1003361222304 #群
+
+# 代理配置（必须，你在国内）
+PROXY_TYPE=5
+PROXY_HOST=127.0.0.1
+PROXY_PORT=7890
+
+# 项目配置
+BUILD_PROJECT_PATH=../WG-WEB
+ALLOWED_USERS=
