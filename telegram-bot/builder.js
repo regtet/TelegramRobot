@@ -52,6 +52,16 @@ class Builder {
    * 获取所有分支列表
    */
   async getBranches() {
+    // 在获取分支前先尝试刷新远程分支，确保与远程同步
+    if (this.config.autoFetchPull !== false) {
+      const fetchResult = await this.runCommand('git fetch --all --prune');
+      if (!fetchResult.success) {
+        console.log(chalk.yellow('⚠ 刷新远程分支失败，使用现有分支列表'));
+      } else {
+        console.log(chalk.green('✓ 已刷新远程分支列表'));
+      }
+    }
+
     const result = await this.runCommand('git branch -a');
     if (!result.success) {
       throw new Error('获取分支列表失败');
@@ -59,10 +69,67 @@ class Builder {
 
     const branches = result.output
       .split('\n')
-      .map(line => line.trim().replace(/^\*\s*/, '').replace(/^remotes\/origin\//, ''))
+      .map(line => {
+        return line
+          .trim()
+          .replace(/^\*\s*/, '')
+          .replace(/^remotes\/[^/]+\//, '');
+      })
       .filter(line => line && !line.includes('HEAD'));
 
     return [...new Set(branches)];
+  }
+
+  /**
+   * 验证分支是否存在
+   * @param {string} branchName - 分支名
+   * @returns {Promise<boolean>} - 分支是否存在
+   */
+  async branchExists(branchName) {
+    // 先尝试获取所有分支（使用缓存）
+    if (!this._branchesCache) {
+      try {
+        this._branchesCache = await this.getBranches();
+      } catch (error) {
+        // 如果获取失败，尝试直接检查单个分支
+        const result = await this.runCommand(`git show-ref --verify --quiet refs/heads/${branchName} || git show-ref --verify --quiet refs/remotes/origin/${branchName}`);
+        return result.success;
+      }
+    }
+
+    // 检查本地分支和远程分支
+    return this._branchesCache.includes(branchName);
+  }
+
+  /**
+   * 验证多个分支是否存在
+   * @param {Array<string>} branchNames - 分支名数组
+   * @returns {Promise<{valid: Array<string>, invalid: Array<string>}>} - 返回有效和无效的分支
+   */
+  async validateBranches(branchNames) {
+    // 清除缓存，确保获取最新分支列表
+    this._branchesCache = null;
+
+    try {
+      this._branchesCache = await this.getBranches();
+    } catch (error) {
+      console.log(chalk.yellow('⚠ 无法获取分支列表，将在执行时验证'));
+      // 如果获取失败，返回所有分支为待验证状态
+      return { valid: branchNames, invalid: [] };
+    }
+
+    const valid = [];
+    const invalid = [];
+
+    for (const branchName of branchNames) {
+      if (this._branchesCache.includes(branchName)) {
+        valid.push(branchName);
+      } else {
+        invalid.push(branchName);
+      }
+    }
+
+    return { valid, invalid };
   }
 
   /**

@@ -64,8 +64,6 @@ let currentBuildBranch = '';
 let buildQueue = []; // 排队列表
 let currentBuildId = null; // 当前构建ID
 let shouldCancelBuild = false; // 取消标志
-let queueMessageId = null; // 队列消息ID
-let queueChatId = null; // 队列消息所在群组
 
 // 检查用户权限
 function isUserAllowed(userId) {
@@ -143,24 +141,24 @@ function isBranchAllowed(branchName) {
 
             // 命令: /start
             if (cleanText === '/start') {
-                await client.sendMessage(message.chatId, {
-                    message:
-                        `🤖 WG-WEB 自动打包机器人\n\n` +
-                        `使用方法:\n` +
-                        `1️⃣ 打包单个分支:\n` +
-                        `   打包 V5futebol\n` +
-                        `   打包 x-12\n\n` +
-                        `2️⃣ 打包多个分支（空格隔开）:\n` +
-                        `   打包 V5futebol x-12 main\n` +
-                        `   打包 a b c\n\n` +
-                        `取消打包:\n` +
-                        `取消 V5futebol\n` +
-                        `取消打包 LF-Viagem\n\n` +
-                        `命令:\n` +
-                        `/queue - 查看队列\n` +
-                        `/branches - 查看分支\n` +
-                        `/status - 查看状态`
-                });
+                console.log(chalk.gray('收到 /start 命令'));
+                console.log(
+                    `🤖 WG-WEB 自动打包机器人\n\n` +
+                    `使用方法:\n` +
+                    `1️⃣ 打包单个分支:\n` +
+                    `   打包 V5futebol\n` +
+                    `   打包 x-12\n\n` +
+                    `2️⃣ 打包多个分支（空格隔开）:\n` +
+                    `   打包 V5futebol x-12 main\n` +
+                    `   打包 a b c\n\n` +
+                    `取消打包:\n` +
+                    `取消 V5futebol\n` +
+                    `取消打包 LF-Viagem\n\n` +
+                    `命令:\n` +
+                    `/queue - 查看队列\n` +
+                    `/branches - 查看分支\n` +
+                    `/status - 查看状态`
+                );
                 return;
             }
 
@@ -176,13 +174,13 @@ function isBranchAllowed(branchName) {
                     `✅ 分支限制: ${config.build.allowedBranches.length > 0 ? config.build.allowedBranches.join(', ') : '无限制'}\n` +
                     `✅ 自动拉取: ${config.build.autoFetchPull ? '是' : '否'}`;
 
-                await client.sendMessage(message.chatId, { message: status });
+                console.log(chalk.gray('/status 命令输出:\n' + status));
                 return;
             }
 
             // 命令: /branches
             if (cleanText === '/branches') {
-                await client.sendMessage(message.chatId, { message: '🔍 正在获取分支列表...' });
+                console.log(chalk.gray('收到 /branches 命令，正在获取分支列表...'));
 
                 try {
                     const branches = await builder.getBranches();
@@ -199,11 +197,9 @@ function isBranchAllowed(branchName) {
 
                     msg += '\n\n💡 直接发送分支名开始打包';
 
-                    await client.sendMessage(message.chatId, { message: msg });
+                    console.log(chalk.gray(msg));
                 } catch (error) {
-                    await client.sendMessage(message.chatId, {
-                        message: `❌ 获取分支失败: ${error.message}`
-                    });
+                    console.error(chalk.red(`获取分支失败: ${error.message}`));
                 }
                 return;
             }
@@ -227,21 +223,22 @@ function isBranchAllowed(branchName) {
                     queueMessage += `等待中: 无`;
                 }
 
-                await client.sendMessage(message.chatId, { message: queueMessage });
+                console.log(chalk.gray('/queue 命令输出:\n' + queueMessage));
                 return;
             }
 
             // 命令: /cancel（已废弃，保留兼容）
             if (cleanText === '/cancel') {
-                await client.sendMessage(message.chatId, {
-                    message: `ℹ️ 命令已更新\n\n` +
-                        `新用法:\n` +
-                        `取消 分支名 - 取消指定分支的打包\n` +
-                        `取消打包 分支名 - 取消指定分支的打包\n\n` +
-                        `示例:\n` +
-                        `取消 V5futebol\n` +
-                        `取消打包 LF-Viagem`
-                });
+                console.log(chalk.gray('收到 /cancel 命令（已废弃）'));
+                console.log(
+                    `ℹ️ 命令已更新\n\n` +
+                    `新用法:\n` +
+                    `取消 分支名 - 取消指定分支的打包\n` +
+                    `取消打包 分支名 - 取消指定分支的打包\n\n` +
+                    `示例:\n` +
+                    `取消 V5futebol\n` +
+                    `取消打包 LF-Viagem`
+                );
                 return;
             }
 
@@ -258,9 +255,7 @@ function isBranchAllowed(branchName) {
                 const branchName = trimmedText.substring(4).trim();
 
                 if (branchName.length === 0) {
-                    await client.sendMessage(message.chatId, {
-                        message: `❌ 请指定要取消的分支名\n\n用法: 取消打包 分支名`
-                    });
+                    console.log(chalk.yellow('取消打包命令缺少分支名'));
                     return;
                 }
 
@@ -272,9 +267,7 @@ function isBranchAllowed(branchName) {
                 const branchName = trimmedText.substring(2).trim();
 
                 if (branchName.length === 0) {
-                    await client.sendMessage(message.chatId, {
-                        message: `❌ 请指定要取消的分支名\n\n用法: 取消 分支名`
-                    });
+                    console.log(chalk.yellow('取消命令缺少分支名'));
                     return;
                 }
 
@@ -291,9 +284,7 @@ function isBranchAllowed(branchName) {
             const branchText = trimmedText.substring(2).trim();
 
             if (branchText.length === 0) {
-                await client.sendMessage(message.chatId, {
-                    message: `❌ 请指定分支名\n\n用法:\n打包 V5futebol\n打包 x-12 main\n打包 a b c`
-                });
+                console.log(chalk.yellow('打包命令缺少分支名'));
                 return;
             }
 
@@ -301,34 +292,27 @@ function isBranchAllowed(branchName) {
             const branchNames = branchText.split(/\s+/).filter(b => b.length > 0);
 
             if (branchNames.length === 0) {
-                await client.sendMessage(message.chatId, {
-                    message: `❌ 请指定分支名\n\n用法:\n打包 V5futebol\n打包 x-12 main`
-                });
+                console.log(chalk.yellow('打包命令未解析到有效分支名'));
                 return;
             }
 
             // 验证每个分支名
-            const invalidBranches = [];
+            const invalidFormatBranches = [];
             for (const branchName of branchNames) {
                 if (branchName.length > 100) {
-                    invalidBranches.push(`${branchName} (太长)`);
+                    invalidFormatBranches.push(`${branchName} (太长)`);
                 } else if (!/^[a-zA-Z0-9\-_\/\.]+$/.test(branchName)) {
-                    invalidBranches.push(`${branchName} (非法字符)`);
+                    invalidFormatBranches.push(`${branchName} (非法字符)`);
                 }
             }
 
-            if (invalidBranches.length > 0) {
-                await client.sendMessage(message.chatId, {
-                    message: `❌ 分支名格式错误:\n${invalidBranches.join('\n')}\n\n只能包含: 字母 数字 - _ / .`
-                });
+            if (invalidFormatBranches.length > 0) {
+                console.log(chalk.red(`分支名格式错误: ${invalidFormatBranches.join(', ')}`));
                 return;
             }
 
             // 检查用户权限（只检查一次）
             if (!isUserAllowed(senderId)) {
-                await client.sendMessage(message.chatId, {
-                    message: `❌ 抱歉，你没有权限使用此功能\n用户ID: ${senderId}`
-                });
                 console.log(chalk.red(`拒绝访问: 用户 ${senderId} 无权限`));
                 return;
             }
@@ -337,56 +321,33 @@ function isBranchAllowed(branchName) {
             if (config.build.allowedBranches.length > 0) {
                 const disallowedBranches = branchNames.filter(b => !isBranchAllowed(b));
                 if (disallowedBranches.length > 0) {
-                    await client.sendMessage(message.chatId, {
-                        message: `❌ 以下分支不允许打包:\n${disallowedBranches.join('\n')}\n\n` +
-                            `允许的分支: ${config.build.allowedBranches.join(', ')}`
-                    });
+                    console.log(chalk.red(`分支不允许打包: ${disallowedBranches.join(', ')}`));
                     return;
                 }
             }
 
-      // 处理多个分支
-      let addedCount = 0;
+            // 验证分支是否存在
+            console.log(chalk.cyan(`\n🔍 验证分支是否存在...`));
+            const { valid: validBranches, invalid: invalidBranches } = await builder.validateBranches(branchNames);
 
-            for (let i = 0; i < branchNames.length; i++) {
-                const branchName = branchNames[i];
+            if (invalidBranches.length > 0) {
+                console.log(chalk.yellow(`⚠ 以下分支不存在，将跳过: ${invalidBranches.join(', ')}`));
+            }
+
+            if (validBranches.length === 0) {
+                console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
+                return;
+            }
+
+            console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
+
+      // 处理多个分支（只处理有效的分支）
+
+            for (let i = 0; i < validBranches.length; i++) {
+                const branchName = validBranches[i];
                 const buildId = Date.now().toString() + '_' + i;
 
-                // 第一个分支且当前空闲，立即开始
-                if (i === 0 && !isBuilding) {
-                    // 设置打包状态
-                    isBuilding = true;
-                    currentBuildBranch = branchName;
-          currentBuildId = buildId;
-
-                    console.log(chalk.cyan(`\n开始打包分支: ${branchName} (共${branchNames.length}个)`));
-                    console.log(chalk.gray(`触发用户: ${senderId}\n`));
-
-                    // 执行构建流程（异步，不等待）
-                    (async () => {
-                        try {
-                            await executeBuild(branchName, senderId, message.chatId);
-                        } catch (error) {
-                            console.error(chalk.red('打包失败:'), error);
-                        }
-
-                        // 释放打包状态并处理下一个
-                        isBuilding = false;
-                        currentBuildBranch = '';
-                        currentBuildId = null;
-
-                        // 如果队列清空了，重置队列消息ID
-                        if (buildQueue.length === 0) {
-                            queueMessageId = null;
-                            queueChatId = null;
-                        }
-
-                        setTimeout(() => {
-                            processNextInQueue();
-                        }, 2000);
-                    })();
-                } else {
-                    // 其他分支或当前有任务，加入队列
+                if (isBuilding || (i > 0)) {
                     buildQueue.push({
                         buildId,
                         branchName,
@@ -394,50 +355,38 @@ function isBranchAllowed(branchName) {
                         chatId: message.chatId,
                         timestamp: new Date()
                     });
-                    addedCount++;
                     console.log(chalk.gray(`加入队列: ${branchName} (位置 ${buildQueue.length})`));
+                    continue;
                 }
-            }
 
-            // 如果有分支加入队列，更新/发送队列消息
-            if (addedCount > 0) {
-                // 显示队列列表
-                let queueList = '📋 当前队列:\n';
-                buildQueue.forEach((task, index) => {
-                    queueList += `${index + 1}. ${task.branchName}\n`;
-                });
+                // 设置打包状态
+                isBuilding = true;
+                currentBuildBranch = branchName;
+                currentBuildId = buildId;
 
-                const queueText = `⏳ 队列 (${buildQueue.length}个)\n\n` +
-                    `🔄 正在打包: ${currentBuildBranch}\n\n` +
-                    queueList;
+                console.log(chalk.cyan(`\n开始打包分支: ${branchName} (共${validBranches.length}个)`));
+                console.log(chalk.gray(`触发用户: ${senderId}\n`));
 
-                // 尝试编辑之前的队列消息，如果失败则发送新消息
-                let messageUpdated = false;
-                if (queueMessageId && queueChatId === message.chatId.toString()) {
+                // 执行构建流程（异步，不等待）
+                (async () => {
                     try {
-                        await client.editMessage(message.chatId, {
-                            message: queueMessageId,
-                            text: queueText
-                        });
-                        messageUpdated = true;
-                        console.log(chalk.gray(`更新队列消息 (共${addedCount}个分支加入)`));
-                    } catch (e) {
-                        console.log(chalk.yellow(`无法编辑队列消息，发送新消息`));
+                        await executeBuild(branchName, senderId, message.chatId);
+                    } catch (error) {
+                        console.error(chalk.red('打包失败:'), error);
                     }
-                }
 
-                // 如果没有编辑成功，发送新消息
-                if (!messageUpdated) {
-                    const msg = await client.sendMessage(message.chatId, {
-                        message: queueText
-                    });
-                    queueMessageId = msg.id;
-                    queueChatId = message.chatId.toString();
-                    console.log(chalk.cyan(`已加入队列: ${addedCount}个分支`));
-                }
+                    // 释放打包状态并处理下一个
+                    isBuilding = false;
+                    currentBuildBranch = '';
+                    currentBuildId = null;
+
+                    setTimeout(() => {
+                        processNextInQueue();
+                    }, 2000);
+                })();
             }
 
-            return;
+      return;
 
         } catch (error) {
             console.error(chalk.red('处理消息时出错:'), error);
@@ -446,90 +395,29 @@ function isBranchAllowed(branchName) {
 
     // 处理取消指定分支
     async function handleCancelBranch(branchName, senderId, chatId) {
-        let cancelMessage = '';
-        let cancelledCurrent = false;
-        let cancelledQueue = [];
+        let removedFromQueue = 0;
 
-        // 检查是否取消当前打包
         if (isBuilding && currentBuildBranch === branchName) {
-            cancelMessage = `❌ 已中断: ${branchName}`;
-
-            // 设置取消标志，中断当前流程
             shouldCancelBuild = true;
-            cancelledCurrent = true;
-
             console.log(chalk.yellow(`打包已中断: ${branchName} (操作者: ${senderId})`));
         }
 
-        // 检查队列中是否有该分支
-        const queueTasks = buildQueue.filter(task => task.branchName === branchName);
-        if (queueTasks.length > 0) {
-            buildQueue = buildQueue.filter(task => task.branchName !== branchName);
-            cancelledQueue = queueTasks;
-
-            if (!cancelledCurrent) {
-                cancelMessage = `❌ 已移除: ${branchName}`;
-            } else {
-                cancelMessage += `\n📝 并从队列移除`;
+        const originalLength = buildQueue.length;
+        buildQueue = buildQueue.filter(task => {
+            if (task.branchName === branchName) {
+                removedFromQueue++;
+                return false;
             }
+            return true;
+        });
 
-            console.log(chalk.yellow(`从队列移除: ${branchName} (${queueTasks.length}个)`));
+        if (removedFromQueue > 0) {
+            console.log(chalk.yellow(`从队列移除: ${branchName} (${removedFromQueue}个)`));
         }
 
-        // 如果没有找到任何匹配的任务
-        if (!cancelledCurrent && cancelledQueue.length === 0) {
-            await client.sendMessage(chatId, {
-                message: `ℹ️ 未找到: ${branchName}\n使用 /queue 查看队列`
-            });
-            return;
+        if (!shouldCancelBuild && removedFromQueue === 0) {
+            console.log(chalk.gray(`取消请求未找到对应任务: ${branchName}`));
         }
-
-        // 显示剩余队列
-        if (buildQueue.length > 0) {
-            cancelMessage += `\n\n📋 剩余 ${buildQueue.length}个:\n`;
-            buildQueue.slice(0, 5).forEach((task, index) => {
-                cancelMessage += `${index + 1}. ${task.branchName}\n`;
-            });
-            if (buildQueue.length > 5) {
-                cancelMessage += `... 还有 ${buildQueue.length - 5} 个`;
-            }
-        } else {
-            cancelMessage += `\n\n✅ 队列已清空`;
-        }
-
-        // 尝试编辑队列消息，如果失败则发送新消息
-        let messageUpdated = false;
-        if (queueMessageId && queueChatId === chatId.toString()) {
-            try {
-                await client.editMessage(chatId, {
-                    message: queueMessageId,
-                    text: cancelMessage
-                });
-                messageUpdated = true;
-                console.log(chalk.gray(`更新队列消息（取消操作）`));
-            } catch (e) {
-                console.log(chalk.yellow(`无法编辑队列消息，发送新消息`));
-            }
-        }
-
-        // 如果没有编辑成功，发送新消息
-        if (!messageUpdated) {
-            const msg = await client.sendMessage(chatId, { message: cancelMessage });
-            // 如果队列还有内容，保存消息ID以便后续编辑
-            if (buildQueue.length > 0 || isBuilding) {
-                queueMessageId = msg.id;
-                queueChatId = chatId.toString();
-            }
-        }
-
-        // 如果队列清空了，重置队列消息ID
-        if (buildQueue.length === 0 && !isBuilding) {
-            queueMessageId = null;
-            queueChatId = null;
-        }
-
-        // 注意：如果取消了当前任务，executeBuild 会自动处理并触发下一个任务
-        // 这里不需要手动调用 processNextInQueue
     }
 
     // 执行构建流程（可复用函数）
@@ -557,7 +445,7 @@ function isBranchAllowed(branchName) {
         }
 
         if (!result.success) {
-            await client.sendMessage(chatId, { message: `❌ 打包失败: ${branchName}\n${result.error}` });
+            log(chalk.red(`构建失败: ${result.error}`));
             return { cancelled: false };
         }
 
@@ -574,13 +462,11 @@ function isBranchAllowed(branchName) {
         try {
             await client.sendFile(chatId, {
                 file: result.zipFilePath,
-                caption: `📦 ${branchName}\n${result.sizeMB}MB`,
                 forceDocument: true,
             });
             log(chalk.green('上传完成'));
         } catch (error) {
             log(chalk.red('上传失败'), error.message);
-            await client.sendMessage(chatId, { message: `❌ 上传失败: ${branchName}\n${error.message}` });
         } finally {
             if (fs.existsSync(result.zipFilePath)) {
                 fs.unlinkSync(result.zipFilePath);
@@ -610,21 +496,12 @@ function isBranchAllowed(branchName) {
             await executeBuild(nextTask.branchName, nextTask.userId, nextTask.chatId);
         } catch (error) {
             console.error(chalk.red('队列任务处理失败:'), error);
-            await client.sendMessage(nextTask.chatId, {
-                message: `❌ 失败: ${nextTask.branchName}\n${error.message}`
-            });
         }
 
         // 重置状态并处理下一个
         isBuilding = false;
         currentBuildBranch = '';
         currentBuildId = null;
-
-        // 如果队列清空了，重置队列消息ID
-        if (buildQueue.length === 0) {
-            queueMessageId = null;
-            queueChatId = null;
-        }
 
         setTimeout(() => {
             processNextInQueue();
