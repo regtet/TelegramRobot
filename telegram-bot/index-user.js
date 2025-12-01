@@ -280,7 +280,7 @@ function isBranchAllowed(branchName) {
                 return; // 不是打包命令，忽略
             }
 
-            // 提取分支名（去掉"打包"前缀），支持多个分支用空格隔开
+            // 提取分支名（去掉"打包"前缀），支持多个分支用空格或换行隔开
             const branchText = trimmedText.substring(2).trim();
 
             if (branchText.length === 0) {
@@ -288,8 +288,15 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            // 按空格分割多个分支
-            const branchNames = branchText.split(/\s+/).filter(b => b.length > 0);
+            // 按空格或换行符分割多个分支，并清理不可见字符
+            const branchNames = branchText
+                .split(/[\s\n\r]+/)  // 支持空格、换行符、回车符
+                .filter(b => b.length > 0)
+                .map(b => {
+                    // 清理不可见字符（零宽字符、零宽非断行空格等）
+                    return b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+                })
+                .filter(b => b.length > 0);
 
             if (branchNames.length === 0) {
                 console.log(chalk.yellow('打包命令未解析到有效分支名'));
@@ -336,15 +343,75 @@ function isBranchAllowed(branchName) {
 
             if (validBranches.length === 0) {
                 console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message: `❌ 所有分支都不存在，取消打包`
+                    });
+                } catch (error) {
+                    console.log(chalk.yellow('发送消息失败:', error.message));
+                }
                 return;
             }
 
             console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
+            console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
 
-      // 处理多个分支（只处理有效的分支）
+            // 过滤掉已在队列中或正在打包的分支
+            const newBranches = [];
+            const duplicateBranches = [];
 
-            for (let i = 0; i < validBranches.length; i++) {
-                const branchName = validBranches[i];
+            for (const branchName of validBranches) {
+                // 检查是否正在打包
+                if (isBuilding && currentBuildBranch === branchName) {
+                    duplicateBranches.push(`${branchName} (正在打包)`);
+                    continue;
+                }
+
+                // 检查是否已在队列中
+                const inQueue = buildQueue.some(item => item.branchName === branchName);
+                if (inQueue) {
+                    duplicateBranches.push(`${branchName} (已在队列)`);
+                    continue;
+                }
+
+                newBranches.push(branchName);
+            }
+
+            // 如果有重复的分支，发送提示
+            if (duplicateBranches.length > 0) {
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message: `⚠️ 以下分支已存在，已跳过:\n${duplicateBranches.join('\n')}`
+                    });
+                } catch (error) {
+                    console.log(chalk.yellow('发送消息失败:', error.message));
+                }
+            }
+
+            // 如果没有新分支需要处理，直接返回
+            if (newBranches.length === 0) {
+                console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
+                return;
+            }
+
+            // 发送消息到 Telegram（只输出一次，只包含新分支）
+            try {
+                const logMessage =
+                    `🚀 打包任务启动\n` +
+                    `📋 分支列表: ${newBranches.join(', ')}\n` +
+                    `⏳ 正在处理中...`;
+
+                await client.sendMessage(message.chatId, {
+                    message: logMessage
+                });
+            } catch (error) {
+                console.log(chalk.yellow('发送消息失败:', error.message));
+            }
+
+      // 处理多个分支（只处理新的有效分支）
+
+            for (let i = 0; i < newBranches.length; i++) {
+                const branchName = newBranches[i];
                 const buildId = Date.now().toString() + '_' + i;
 
                 if (isBuilding || (i > 0)) {

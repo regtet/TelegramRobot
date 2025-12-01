@@ -73,7 +73,8 @@ class Builder {
         return line
           .trim()
           .replace(/^\*\s*/, '')
-          .replace(/^remotes\/[^/]+\//, '');
+          .replace(/^remotes\/[^/]+\//, '')
+          .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ''); // 清理不可见字符
       })
       .filter(line => line && !line.includes('HEAD'));
 
@@ -122,10 +123,20 @@ class Builder {
     const invalid = [];
 
     for (const branchName of branchNames) {
-      if (this._branchesCache.includes(branchName)) {
-        valid.push(branchName);
+      // 清理分支名中的不可见字符后再匹配
+      const cleanBranchName = branchName.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+
+      // 精确匹配或忽略大小写匹配（git 分支名通常大小写敏感，但有些系统可能不敏感）
+      const found = this._branchesCache.find(b => {
+        const cleanB = b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+        return cleanB === cleanBranchName || cleanB.toLowerCase() === cleanBranchName.toLowerCase();
+      });
+
+      if (found) {
+        // 返回实际匹配到的分支名（清理后的）
+        valid.push(found.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim());
       } else {
-        invalid.push(branchName);
+        invalid.push(cleanBranchName);
       }
     }
 
@@ -162,10 +173,45 @@ class Builder {
       console.log(chalk.yellow('⚠ 跳过 Fetch（autoFetchPull=false）'));
     }
 
+    // 1.5. 清理工作区，确保可以切换分支
+    console.log(chalk.cyan('🧹 清理工作区...'));
+
+    // 检查工作区状态
+    result = await this.runCommand('git status --porcelain');
+    const hasChanges = result.success && result.output.trim().length > 0;
+
+    if (hasChanges) {
+      console.log(chalk.yellow('⚠ 检测到工作区有未提交的更改，正在清理...'));
+
+      // 重置工作区和索引（丢弃所有本地更改）
+      result = await this.runCommand('git reset --hard HEAD');
+      if (!result.success) {
+        console.log(chalk.yellow('⚠ git reset --hard 失败，尝试其他方法...'));
+      }
+
+      // 清理未跟踪的文件和目录
+      const cleanResult = await this.runCommand('git clean -fd');
+      if (cleanResult.success) {
+        console.log(chalk.green('✓ 工作区已清理'));
+      } else if (result.success) {
+        console.log(chalk.green('✓ 工作区已清理（部分）'));
+      } else {
+        console.log(chalk.yellow('⚠ 工作区清理可能不完整，继续尝试切换分支...'));
+      }
+    } else {
+      console.log(chalk.green('✓ 工作区干净'));
+    }
+
     // 2. 切换分支
     result = await this.runCommand(`git checkout ${branchName}`);
     if (!result.success) {
-      throw new Error(`切换分支失败: ${result.error}`);
+      // 如果切换失败，尝试强制切换
+      console.log(chalk.yellow('⚠ 普通切换失败，尝试强制切换...'));
+      result = await this.runCommand(`git checkout -f ${branchName}`);
+
+      if (!result.success) {
+        throw new Error(`切换分支失败: ${result.error}`);
+      }
     }
     console.log(chalk.green(`✓ 已切换到 ${branchName}`));
 
