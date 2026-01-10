@@ -8,6 +8,7 @@ const chalk = require('chalk');
 const config = require('./config');
 const Builder = require('./builder');
 const FileSplitter = require('./file-splitter');
+const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./config-reader');
 
 // 验证配置
 if (!process.env.API_ID || !process.env.API_HASH) {
@@ -408,7 +409,7 @@ function isBranchAllowed(branchName) {
                 console.log(chalk.yellow('发送消息失败:', error.message));
             }
 
-      // 处理多个分支（只处理新的有效分支）
+            // 处理多个分支（只处理新的有效分支）
 
             for (let i = 0; i < newBranches.length; i++) {
                 const branchName = newBranches[i];
@@ -453,10 +454,195 @@ function isBranchAllowed(branchName) {
                 })();
             }
 
-      return;
+            return;
 
         } catch (error) {
             console.error(chalk.red('处理消息时出错:'), error);
+        }
+    }, new NewMessage({}));
+
+    // 监听文件上传（压缩包）
+    client.addEventHandler(async (event) => {
+        try {
+            const message = event.message;
+
+            // 只处理有文件的消息
+            if (!message || !message.media) return;
+
+            // 检查是否是文档类型（文件）
+            const media = message.media;
+            let fileName = null;
+            let fileSize = 0;
+
+            // 处理不同类型的媒体
+            if (media.className === 'MessageMediaDocument') {
+                const document = media.document;
+                if (document && document.attributes) {
+                    // 查找文件名属性
+                    const fileNameAttr = document.attributes.find(attr => attr.className === 'DocumentAttributeFilename');
+                    if (fileNameAttr) {
+                        fileName = fileNameAttr.fileName;
+                        fileSize = document.size || 0;
+                    }
+                }
+            }
+
+            // 如果没有文件名，跳过
+            if (!fileName) return;
+
+            // 如果配置了 CHAT_ID，只处理该群组的消息
+            if (chatId && message.chatId.toString() !== chatId.toString()) {
+                return;
+            }
+
+            // 从文件名提取分支名（函数内部会检查是否是压缩包）
+            const branchName = extractBranchNameFromFileName(fileName);
+
+            if (!branchName) {
+                // 不是压缩包文件或无法提取分支名，静默跳过（不打印日志）
+                return;
+            }
+
+            // 打印文件信息（只处理压缩包文件）
+            console.log(chalk.gray('收到压缩包文件:'));
+            console.log(chalk.gray('  文件名:'), fileName);
+            console.log(chalk.gray('  大小:'), (fileSize / 1024 / 1024).toFixed(2), 'MB');
+
+            console.log(chalk.cyan(`\n📦 检测到压缩包文件: ${fileName}`));
+            console.log(chalk.cyan(`🔍 提取的分支名: ${branchName}`));
+
+            // 验证分支是否存在
+            console.log(chalk.cyan(`🔍 验证分支是否存在...`));
+            const branchExists = await builder.branchExists(branchName);
+
+            if (!branchExists) {
+                const errorMsg = `⚠️ **分支检测**\n\n🌿 分支: \`${branchName}\`\n❌ 云端未检测到该分支`;
+                console.log(chalk.red(`❌ 分支 ${branchName} 云端未检测到`));
+
+                // 发送 Telegram 消息
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message: errorMsg,
+                        parseMode: 'Markdown'
+                    });
+                } catch (error) {
+                    // 如果 Markdown 解析失败，使用纯文本格式
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: `⚠️ 分支检测\n\n🌿 分支: ${branchName}\n❌ 云端未检测到该分支`
+                        });
+                    } catch (err) {
+                        console.log(chalk.yellow('发送消息失败:', err.message));
+                    }
+                }
+                return;
+            }
+
+            console.log(chalk.green(`✓ 分支 ${branchName} 存在`));
+
+            // 如果正在构建，等待一小段时间（避免冲突）
+            if (isBuilding) {
+                console.log(chalk.yellow('⚠ 正在构建中，等待 2 秒后处理...'));
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            // 切换到该分支（临时切换，不拉取代码，只为了读取文件）
+            const currentBranch = await builder.runCommand('git rev-parse --abbrev-ref HEAD');
+            let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
+
+            try {
+                // 如果目标分支就是当前分支，不需要切换
+                if (originalBranch === branchName) {
+                    console.log(chalk.gray(`当前已在分支 ${branchName}，无需切换`));
+                } else {
+                    // 切换到目标分支（不拉取，只切换）
+                    console.log(chalk.cyan(`📥 切换到分支 ${branchName}...`));
+                    const checkoutResult = await builder.runCommand(`git checkout ${branchName}`);
+
+                    if (!checkoutResult.success) {
+                        throw new Error(`切换分支失败: ${checkoutResult.error}`);
+                    }
+                }
+
+                // 读取配置文件
+                console.log(chalk.cyan(`📖 读取配置文件...`));
+                const result = await readPackageIdFromBranch(builder.projectPath, branchName);
+
+                if (result.success) {
+                    const msg = `📦 **压缩包检测**\n` +
+                        `\n` +
+                        `📄 文件名: \`${fileName}\`\n` +
+                        `🌿 分支: \`${branchName}\`\n` +
+                        `📋 Package ID: \`${result.packageId}\``;
+                    console.log(chalk.green(`✅ 分支 ${branchName} 当前分支分包ID packageId: ${result.packageId}`));
+
+                    // 发送 Telegram 消息
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: msg,
+                            parseMode: 'Markdown'
+                        });
+                    } catch (error) {
+                        // 如果 Markdown 解析失败，使用纯文本格式
+                        try {
+                            await client.sendMessage(message.chatId, {
+                                message: `🔍 正在分析压缩包…\n🌿 分支匹配成功： ${branchName}\n📋 已自动检测到云端Package ID: ${result.packageId}`
+                            });
+                        } catch (err) {
+                            console.log(chalk.yellow('发送消息失败:', err.message));
+                        }
+                    }
+                } else {
+                    const errorMsg = `⚠️ **配置检测**\n\n🌿 分支: \`${branchName}\`\n❌ 未检测到 packageId 配置`;
+                    console.log(chalk.red(`❌ 分支 ${branchName} 当前分支 未检测到packageId配置`));
+
+                    // 发送 Telegram 消息
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: errorMsg,
+                            parseMode: 'Markdown'
+                        });
+                    } catch (error) {
+                        // 如果 Markdown 解析失败，使用纯文本格式
+                        try {
+                            await client.sendMessage(message.chatId, {
+                                message: `⚠️ 配置检测\n\n🌿 分支: ${branchName}\n❌ 未检测到 packageId 配置`
+                            });
+                        } catch (err) {
+                            console.log(chalk.yellow('发送消息失败:', err.message));
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(chalk.red(`处理文件失败: ${error.message}`));
+
+                // 发送错误消息
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message: `处理文件失败: ${error.message}`
+                    });
+                } catch (err) {
+                    console.log(chalk.yellow('发送消息失败:', err.message));
+                }
+            } finally {
+                // 恢复原分支（如果之前有且不是正在构建的分支）
+                if (originalBranch && originalBranch !== branchName) {
+                    // 如果原分支是正在构建的分支，不恢复（避免影响构建）
+                    if (isBuilding && currentBuildBranch === originalBranch) {
+                        console.log(chalk.gray(`跳过恢复分支（正在构建 ${originalBranch}）`));
+                    } else {
+                        try {
+                            await builder.runCommand(`git checkout ${originalBranch}`);
+                            console.log(chalk.gray(`已恢复原分支: ${originalBranch}`));
+                        } catch (error) {
+                            console.log(chalk.yellow(`恢复原分支失败: ${error.message}`));
+                        }
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error(chalk.red('处理文件消息时出错:'), error);
         }
     }, new NewMessage({}));
 
