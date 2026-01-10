@@ -513,10 +513,17 @@ function isBranchAllowed(branchName) {
 
             // 验证分支是否存在
             console.log(chalk.cyan(`🔍 验证分支是否存在...`));
-            const branchExists = await builder.branchExists(branchName);
+
+            // 清除缓存，确保获取最新分支列表
+            builder._branchesCache = null;
+
+            // 使用 validateBranches 方法，它支持更智能的匹配（大小写不敏感、先fetch等）
+            const { valid, invalid } = await builder.validateBranches([branchName]);
+            const branchExists = valid.length > 0;
+            const actualBranchName = valid.length > 0 ? valid[0] : branchName;
 
             if (!branchExists) {
-                const errorMsg = `⚠️ **分支检测**\n\n🌿 分支: \`${branchName}\`\n❌ 云端未检测到该分支`;
+                const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${branchName}\n🧠 云端代码库扫描中…\n❌ 云端未检测到分支：${branchName}`;
                 console.log(chalk.red(`❌ 分支 ${branchName} 云端未检测到`));
 
                 // 发送 Telegram 消息
@@ -538,7 +545,7 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            console.log(chalk.green(`✓ 分支 ${branchName} 存在`));
+            console.log(chalk.green(`✓ 分支 ${actualBranchName} 存在`));
 
             // 如果正在构建，等待一小段时间（避免冲突）
             if (isBuilding) {
@@ -551,13 +558,16 @@ function isBranchAllowed(branchName) {
             let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
 
             try {
+                // 使用实际匹配到的分支名（可能大小写不同）
+                const targetBranch = actualBranchName;
+
                 // 如果目标分支就是当前分支，不需要切换
-                if (originalBranch === branchName) {
-                    console.log(chalk.gray(`当前已在分支 ${branchName}，无需切换`));
+                if (originalBranch === targetBranch) {
+                    console.log(chalk.gray(`当前已在分支 ${targetBranch}，无需切换`));
                 } else {
                     // 切换到目标分支（不拉取，只切换）
-                    console.log(chalk.cyan(`📥 切换到分支 ${branchName}...`));
-                    const checkoutResult = await builder.runCommand(`git checkout ${branchName}`);
+                    console.log(chalk.cyan(`📥 切换到分支 ${targetBranch}...`));
+                    const checkoutResult = await builder.runCommand(`git checkout ${targetBranch}`);
 
                     if (!checkoutResult.success) {
                         throw new Error(`切换分支失败: ${checkoutResult.error}`);
@@ -566,15 +576,11 @@ function isBranchAllowed(branchName) {
 
                 // 读取配置文件
                 console.log(chalk.cyan(`📖 读取配置文件...`));
-                const result = await readPackageIdFromBranch(builder.projectPath, branchName);
+                const result = await readPackageIdFromBranch(builder.projectPath, actualBranchName);
 
                 if (result.success) {
-                    const msg = `📦 **压缩包检测**\n` +
-                        `\n` +
-                        `📄 文件名: \`${fileName}\`\n` +
-                        `🌿 分支: \`${branchName}\`\n` +
-                        `📋 Package ID: \`${result.packageId}\``;
-                    console.log(chalk.green(`✅ 分支 ${branchName} 当前分支分包ID packageId: ${result.packageId}`));
+                    const msg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${actualBranchName}\n🧠 云端代码库扫描中…\n🆔 已自动检测到云端 Package ID：${result.packageId}`;
+                    console.log(chalk.green(`✅ 分支 ${actualBranchName} 当前分支分包ID packageId: ${result.packageId}`));
 
                     // 发送 Telegram 消息
                     try {
@@ -593,8 +599,8 @@ function isBranchAllowed(branchName) {
                         }
                     }
                 } else {
-                    const errorMsg = `⚠️ **配置检测**\n\n🌿 分支: \`${branchName}\`\n❌ 未检测到 packageId 配置`;
-                    console.log(chalk.red(`❌ 分支 ${branchName} 当前分支 未检测到packageId配置`));
+                    const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${actualBranchName}\n🧠 云端代码库扫描中…\n❌ 未检测到 packageId 配置`;
+                    console.log(chalk.red(`❌ 分支 ${actualBranchName} 当前分支 未检测到packageId配置`));
 
                     // 发送 Telegram 消息
                     try {
@@ -626,7 +632,7 @@ function isBranchAllowed(branchName) {
                 }
             } finally {
                 // 恢复原分支（如果之前有且不是正在构建的分支）
-                if (originalBranch && originalBranch !== branchName) {
+                if (originalBranch && originalBranch !== actualBranchName) {
                     // 如果原分支是正在构建的分支，不恢复（避免影响构建）
                     if (isBuilding && currentBuildBranch === originalBranch) {
                         console.log(chalk.gray(`跳过恢复分支（正在构建 ${originalBranch}）`));
