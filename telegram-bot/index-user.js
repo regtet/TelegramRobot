@@ -5,10 +5,22 @@ const input = require('input');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
+const { spawn } = require('child_process');
 const config = require('./config');
 const Builder = require('./builder');
 const FileSplitter = require('./file-splitter');
 const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./config-reader');
+
+// 是否启用“收到群消息自动打开 LX Music”功能
+// 需要时把这个改成 true，不需要时改回 false
+const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+
+// LX Music 桌面版路径（请确保路径存在）
+const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
+
+// 简单防抖：避免短时间内反复打开
+let lastLaunchTime = 0;
+const LAUNCH_DEBOUNCE_MS = 10000; // 10 秒内只触发一次
 
 // 验证配置
 if (!process.env.API_ID || !process.env.API_HASH) {
@@ -135,6 +147,27 @@ function isBranchAllowed(branchName) {
             // 如果配置了 CHAT_ID，只处理该群组的消息
             if (chatId && message.chatId.toString() !== chatId.toString()) {
                 return;
+            }
+
+            // 收到目标群消息时，按需自动打开 LX Music
+            if (ENABLE_LX_MUSIC_ON_MESSAGE) {
+                try {
+                    const now = Date.now();
+                    if (now - lastLaunchTime > LAUNCH_DEBOUNCE_MS) {
+                        lastLaunchTime = now;
+                        console.log(chalk.cyan('🎵 检测到群消息，尝试启动 LX Music...'));
+
+                        const child = spawn(LX_MUSIC_PATH, {
+                            detached: true,
+                            stdio: 'ignore'
+                        });
+                        child.unref();
+                    } else {
+                        console.log(chalk.gray('LX Music 启动防抖中，短时间内不重复打开'));
+                    }
+                } catch (err) {
+                    console.error(chalk.red('启动 LX Music 失败:'), err.message);
+                }
             }
 
             // 移除 bot 用户名
