@@ -186,9 +186,6 @@ function isBranchAllowed(branchName) {
                     `2️⃣ 打包多个分支（空格隔开）:\n` +
                     `   打包 V5futebol x-12 main\n` +
                     `   打包 a b c\n\n` +
-                    `检测分支 Package ID:\n` +
-                    `检测 lf-cachorro\n` +
-                    `检测 V5futebol\n\n` +
                     `取消打包:\n` +
                     `取消 V5futebol\n` +
                     `取消打包 LF-Viagem\n\n` +
@@ -321,7 +318,7 @@ function isBranchAllowed(branchName) {
                     console.log(chalk.yellow('检测命令缺少分支名'));
                     try {
                         await client.sendMessage(message.chatId, {
-                            message: `❌ 检测命令缺少分支名\n\n用法: 检测 分支名\n示例: 检测 lf-cachorro`
+                            message: `❌ 检测命令缺少分支名\n\n用法: 检测 分支名\n示例: 检测 45BB`
                         });
                     } catch (error) {
                         console.log(chalk.yellow('发送消息失败:', error.message));
