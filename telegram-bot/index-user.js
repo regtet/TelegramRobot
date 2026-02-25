@@ -572,15 +572,41 @@ function isBranchAllowed(branchName) {
                 }
             }
 
-            // 验证分支是否存在
+            // 验证分支是否存在（在 WG-WEB / WGAME-WEB 两个仓库中查找）
             console.log(chalk.cyan(`\n🔍 验证分支是否存在...`));
-            const { valid: validBranches, invalid: invalidBranches } = await builder.validateBranches(branchNames);
+            const resolvedBuildTargets = [];
+            const invalidBuildBranches = [];
 
-            if (invalidBranches.length > 0) {
-                console.log(chalk.yellow(`⚠ 以下分支不存在，将跳过: ${invalidBranches.join(', ')}`));
+            for (const name of branchNames) {
+                try {
+                    const resolved = await resolveProjectAndBranch(name);
+                    if (resolved) {
+                        resolvedBuildTargets.push({
+                            inputName: name,
+                            project: resolved.project,
+                            actualBranchName: resolved.actualBranchName,
+                        });
+                    } else {
+                        invalidBuildBranches.push(name);
+                    }
+                } catch (e) {
+                    console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
+                    invalidBuildBranches.push(name);
+                }
             }
 
-            if (validBranches.length === 0) {
+            if (invalidBuildBranches.length > 0) {
+                console.log(chalk.yellow(`⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`));
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message: `⚠ 以下分支在两个仓库中都不存在，将跳过:\n${invalidBuildBranches.join(', ')}`
+                    });
+                } catch (error) {
+                    console.log(chalk.yellow('发送消息失败:', error.message));
+                }
+            }
+
+            if (resolvedBuildTargets.length === 0) {
                 console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
                 try {
                     await client.sendMessage(message.chatId, {
@@ -592,14 +618,16 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
+            const validBranches = resolvedBuildTargets.map(t => t.actualBranchName);
             console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
             console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
 
             // 过滤掉已在队列中或正在打包的分支
-            const newBranches = [];
+            const newTargets = [];
             const duplicateBranches = [];
 
-            for (const branchName of validBranches) {
+            for (const target of resolvedBuildTargets) {
+                const branchName = target.actualBranchName;
                 // 检查是否正在打包
                 if (isBuilding && currentBuildBranch === branchName) {
                     duplicateBranches.push(`${branchName} (正在打包)`);
@@ -613,7 +641,7 @@ function isBranchAllowed(branchName) {
                     continue;
                 }
 
-                newBranches.push(branchName);
+                newTargets.push(target);
             }
 
             // 如果有重复的分支，发送提示
@@ -637,7 +665,7 @@ function isBranchAllowed(branchName) {
             try {
                 const logMessage =
                     `🚀 打包任务启动\n` +
-                    `📋 分支列表: ${newBranches.join(', ')}\n` +
+                    `📋 分支列表: ${newTargets.map(t => t.actualBranchName).join(', ')}\n` +
                     `⏳ 正在处理中...`;
 
                 await client.sendMessage(message.chatId, {
@@ -648,15 +676,16 @@ function isBranchAllowed(branchName) {
             }
 
             // 处理多个分支（只处理新的有效分支）
-
-            for (let i = 0; i < newBranches.length; i++) {
-                const branchName = newBranches[i];
+            for (let i = 0; i < newTargets.length; i++) {
+                const { project, actualBranchName } = newTargets[i];
+                const branchName = actualBranchName;
                 const buildId = Date.now().toString() + '_' + i;
 
                 if (isBuilding || (i > 0)) {
                     buildQueue.push({
                         buildId,
                         branchName,
+                        project,
                         userId: senderId,
                         chatId: message.chatId,
                         timestamp: new Date()
@@ -670,13 +699,13 @@ function isBranchAllowed(branchName) {
                 currentBuildBranch = branchName;
                 currentBuildId = buildId;
 
-                console.log(chalk.cyan(`\n开始打包分支: ${branchName} (共${validBranches.length}个)`));
+                console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
                 console.log(chalk.gray(`触发用户: ${senderId}\n`));
 
                 // 执行构建流程（异步，不等待）
                 (async () => {
                     try {
-                        await executeBuild(branchName, senderId, message.chatId);
+                        await executeBuild(project, branchName, senderId, message.chatId);
                     } catch (error) {
                         console.error(chalk.red('打包失败:'), error);
                     }
@@ -755,10 +784,10 @@ function isBranchAllowed(branchName) {
             // 清除缓存，确保获取最新分支列表
             builder._branchesCache = null;
 
-            // 使用 validateBranches 方法，它支持更智能的匹配（大小写不敏感、先fetch等）
-            const { valid, invalid } = await builder.validateBranches([branchName]);
-            const branchExists = valid.length > 0;
-            const actualBranchName = valid.length > 0 ? valid[0] : branchName;
+            // 在 WG-WEB / WGAME-WEB 中解析实际项目和分支名
+            const resolved = await resolveProjectAndBranch(branchName);
+            const branchExists = !!resolved;
+            const actualBranchName = resolved ? resolved.actualBranchName : branchName;
 
             if (!branchExists) {
                 const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${branchName}\n🧠 云端代码库扫描中…\n❌ 云端未检测到分支：${branchName}`;
@@ -783,13 +812,14 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            console.log(chalk.green(`✓ 分支 ${actualBranchName} 存在`));
+            console.log(chalk.green(`✓ 分支 ${actualBranchName} 存在（项目: ${resolved.project.name}）`));
 
             // 将文件处理任务加入队列
             const fileTask = {
                 fileName,
                 branchName,
                 actualBranchName,
+                project: resolved.project,
                 chatId: message.chatId,
                 timestamp: new Date()
             };
@@ -1072,7 +1102,7 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    // 处理检测多个分支 Package ID
+    // 处理检测多个分支 Package ID（支持 WG-WEB + WGAME-WEB 两个仓库）
     async function handleDetectBranches(branchNames, chatId) {
         console.log(chalk.cyan(`\n🔍 开始检测分支: ${branchNames.join(', ')}`));
 
@@ -1085,84 +1115,98 @@ function isBranchAllowed(branchName) {
             console.log(chalk.yellow('发送消息失败:', error.message));
         }
 
-        // 验证分支是否存在
-        console.log(chalk.cyan(`🔍 验证分支是否存在...`));
-        const { valid, invalid } = await builder.validateBranches(branchNames);
+        // 先在两个项目中解析每个分支所属的项目和实际分支名
+        console.log(chalk.cyan(`🔍 在 WG-WEB / WGAME-WEB 中解析分支所属项目...`));
 
-        if (invalid.length > 0) {
-            console.log(chalk.yellow(`⚠ 以下分支不存在: ${invalid.join(', ')}`));
+        const resolvedInfos = [];
+        const invalidInfos = [];
+
+        for (const name of branchNames) {
+            try {
+                const resolved = await resolveProjectAndBranch(name);
+                if (resolved) {
+                    resolvedInfos.push({
+                        inputName: name,
+                        project: resolved.project,
+                        actualBranchName: resolved.actualBranchName,
+                    });
+                } else {
+                    invalidInfos.push(name);
+                }
+            } catch (e) {
+                console.log(chalk.yellow(`在所有项目中解析分支 ${name} 失败: ${e.message}`));
+                invalidInfos.push(name);
+            }
         }
 
-        if (valid.length === 0) {
+        if (invalidInfos.length > 0) {
+            console.log(chalk.yellow(`⚠ 以下分支在两个仓库中都不存在: ${invalidInfos.join(', ')}`));
+        }
+
+        if (resolvedInfos.length === 0) {
             const errorMsg = `❌ 所有分支都不存在: ${branchNames.join(', ')}`;
             console.log(chalk.red(errorMsg));
             try {
-                await client.sendMessage(chatId, {
-                    message: errorMsg
-                });
+                await client.sendMessage(chatId, { message: errorMsg });
             } catch (error) {
                 console.log(chalk.yellow('发送消息失败:', error.message));
             }
             return;
         }
 
-        // 保存当前分支
-        const currentBranch = await builder.runCommand('git rev-parse --abbrev-ref HEAD');
-        let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
-
         const results = [];
 
         try {
-            // 逐个检测每个分支
-            for (let i = 0; i < valid.length; i++) {
-                const branchName = branchNames[i];
-                const actualBranchName = valid[i];
+            // 逐个检测每个分支（注意：可能来自不同项目）
+            for (let i = 0; i < resolvedInfos.length; i++) {
+                const info = resolvedInfos[i];
+                const { project, actualBranchName } = info;
 
-                console.log(chalk.cyan(`\n[${i + 1}/${valid.length}] 检测分支: ${actualBranchName}`));
+                console.log(chalk.cyan(`\n[${i + 1}/${resolvedInfos.length}] 在项目 ${project.name} 中检测分支: ${actualBranchName}`));
 
                 try {
+                    // 1. 切换到对应项目的当前分支
+                    const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
+                    let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
+
                     // 如果目标分支就是当前分支，也需要拉取最新代码
                     if (originalBranch === actualBranchName) {
-                        console.log(chalk.gray(`当前已在分支 ${actualBranchName}，拉取最新代码...`));
+                        console.log(chalk.gray(`当前已在项目 ${project.name} 的分支 ${actualBranchName}，拉取最新代码...`));
                     } else {
-                        // 先 fetch 获取远程最新信息（只在第一个分支时执行一次）
-                        if (i === 0 && config.build.autoFetchPull) {
-                            console.log(chalk.cyan(`📥 获取远程分支信息...`));
-                            const fetchResult = await builder.runCommand('git fetch --all');
+                        if (config.build.autoFetchPull) {
+                            console.log(chalk.cyan(`📥 [${project.name}] 获取远程分支信息...`));
+                            const fetchResult = await project.builder.runCommand('git fetch --all');
                             if (!fetchResult.success) {
-                                console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支...`));
+                                console.log(chalk.yellow(`⚠ [${project.name}] Fetch 失败，继续尝试切换分支: ${fetchResult.error}`));
                             } else {
-                                console.log(chalk.green(`✓ Fetch 完成`));
+                                console.log(chalk.green(`✓ [${project.name}] Fetch 完成`));
                             }
                         }
 
-                        // 切换到目标分支
-                        console.log(chalk.cyan(`📥 切换到分支 ${actualBranchName}...`));
-                        const checkoutResult = await builder.runCommand(`git checkout ${actualBranchName}`);
-
+                        console.log(chalk.cyan(`📥 [${project.name}] 切换到分支 ${actualBranchName}...`));
+                        const checkoutResult = await project.builder.runCommand(`git checkout ${actualBranchName}`);
                         if (!checkoutResult.success) {
                             throw new Error(`切换分支失败: ${checkoutResult.error}`);
                         }
-                        console.log(chalk.green(`✓ 已切换到 ${actualBranchName}`));
+                        console.log(chalk.green(`✓ [${project.name}] 已切换到 ${actualBranchName}`));
                     }
 
-                    // 拉取最新代码（确保读取的是远程最新配置）
+                    // 2. 拉取最新代码
                     if (config.build.autoFetchPull) {
-                        console.log(chalk.cyan(`📥 拉取分支最新代码...`));
-                        const pullResult = await builder.runCommand('git pull');
+                        console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
+                        const pullResult = await project.builder.runCommand('git pull');
                         if (!pullResult.success) {
-                            console.log(chalk.yellow(`⚠ Pull 失败，使用本地代码: ${pullResult.error}`));
+                            console.log(chalk.yellow(`⚠ [${project.name}] Pull 失败，使用本地代码: ${pullResult.error}`));
                         } else {
-                            console.log(chalk.green(`✓ 代码已更新到最新`));
+                            console.log(chalk.green(`✓ [${project.name}] 代码已更新到最新`));
                         }
                     }
 
-                    // 读取配置文件
-                    console.log(chalk.cyan(`📖 读取配置文件...`));
-                    const result = await readPackageIdFromBranch(builder.projectPath, actualBranchName);
+                    // 3. 读取配置文件
+                    console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件...`));
+                    const result = await readPackageIdFromBranch(project.path, actualBranchName);
 
                     if (result.success) {
-                        // 格式化 debug 信息
                         const debugText = result.debug !== undefined
                             ? (result.debug ? '测试游服' : '正式游服')
                             : '未知';
@@ -1173,10 +1217,10 @@ function isBranchAllowed(branchName) {
                             ? `debug: ${result.debug}`
                             : 'debug: 未检测到';
 
-                        // App 名称（来自 appDownPath 最后一段）
                         const appName = result.appName || '未检测到';
 
                         results.push({
+                            projectName: project.name,
                             branchName: actualBranchName,
                             packageId: result.packageId,
                             appName,
@@ -1189,27 +1233,29 @@ function isBranchAllowed(branchName) {
 
                         console.log(
                             chalk.green(
-                                `✅ 分支 ${actualBranchName} 的 Package ID: ${result.packageId}, appName: ${appName}, debug: ${result.debug !== undefined ? result.debug : '未检测到'}`
+                                `✅ [${project.name}] 分支 ${actualBranchName} 的 Package ID: ${result.packageId}, appName: ${appName}, debug: ${result.debug !== undefined ? result.debug : '未检测到'}`
                             )
                         );
                     } else {
                         results.push({
+                            projectName: project.name,
                             branchName: actualBranchName,
                             success: false,
                             error: '未检测到 packageId 配置'
                         });
-                        console.log(chalk.red(`❌ 分支 ${actualBranchName} 未检测到 packageId 配置`));
+                        console.log(chalk.red(`❌ [${project.name}] 分支 ${actualBranchName} 未检测到 packageId 配置`));
                     }
                 } catch (error) {
                     results.push({
-                        branchName: actualBranchName,
+                        projectName: project.name,
+                        branchName: info.actualBranchName,
                         success: false,
                         error: error.message
                     });
-                    console.error(chalk.red(`检测分支 ${actualBranchName} 失败: ${error.message}`));
+                    console.error(chalk.red(`检测分支 ${info.actualBranchName} 失败: ${error.message}`));
                 }
 
-                // 清理本地分支（每个分支检测完后清理）
+                // 每个分支检测完后清理一次 WG-WEB 的本地分支（可选）
                 try {
                     await cleanupLocalBranches();
                 } catch (error) {
@@ -1222,21 +1268,24 @@ function isBranchAllowed(branchName) {
 
             for (const result of results) {
                 if (result.success) {
-                    msg += `🌿 ${result.branchName}\n`;
+                    msg += `📁 项目: ${result.projectName}\n`;
+                    msg += `🌿 分支: ${result.branchName}\n`;
                     msg += `📋 Package ID: ${result.packageId}\n`;
                     msg += `📱 App 名称: ${result.appName}\n`;
                     msg += `${result.debugEmoji} 游服类型: ${result.debugText} (${result.debugValue})\n\n`;
                 } else {
-                    msg += `🌿 ${result.branchName}\n`;
+                    msg += `📁 项目: ${result.projectName}\n`;
+                    msg += `🌿 分支: ${result.branchName}\n`;
                     msg += `❌ ${result.error}\n\n`;
                 }
             }
 
-            // 发送 Telegram 消息
+            if (invalidInfos.length > 0) {
+                msg += `⚠ 以下分支在两个仓库中都未找到:\n${invalidInfos.join(', ')}\n`;
+            }
+
             try {
-                await client.sendMessage(chatId, {
-                    message: msg
-                });
+                await client.sendMessage(chatId, { message: msg });
             } catch (error) {
                 console.log(chalk.yellow('发送消息失败:', error.message));
             }
@@ -1244,7 +1293,6 @@ function isBranchAllowed(branchName) {
         } catch (error) {
             console.error(chalk.red(`检测分支失败: ${error.message}`));
 
-            // 发送错误消息
             try {
                 await client.sendMessage(chatId, {
                     message: `❌ 检测失败: ${error.message}`
@@ -1253,7 +1301,7 @@ function isBranchAllowed(branchName) {
                 console.log(chalk.yellow('发送消息失败:', err.message));
             }
         } finally {
-            // 不再自动恢复原分支，仅在最后清理一次本地分支
+            // 最后清理一次 WG-WEB 中的本地分支
             try {
                 await cleanupLocalBranches();
             } catch (error) {
