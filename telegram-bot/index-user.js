@@ -1451,6 +1451,46 @@ function isBranchAllowed(branchName) {
         }
     }
 
+    // 带重试的文件下载（用于从打包服务器下载 APK）
+    async function downloadFileWithRetry(url, localPath, maxAttempts = 3, timeoutMs = 600000) {
+        const retryDelayMs = 5000;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(chalk.cyan(`📥 第 ${attempt}/${maxAttempts} 次尝试下载 APK: ${url}`));
+
+            try {
+                const response = await axios.get(url, { responseType: 'stream', timeout: timeoutMs });
+
+                await new Promise((resolve, reject) => {
+                    const writer = fs.createWriteStream(localPath);
+                    response.data.pipe(writer);
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                });
+
+                console.log(chalk.green(`📦 APK 下载完成: ${localPath}`));
+                return;
+            } catch (error) {
+                const msg = (error && error.message) || '';
+                const code = error && error.code;
+
+                console.log(chalk.yellow(`⚠ 下载 APK 失败（第 ${attempt}/${maxAttempts} 次）：${msg}`));
+
+                const isRetryable =
+                    code === 'ECONNRESET' ||
+                    code === 'ETIMEDOUT' ||
+                    /socket hang up/i.test(msg) ||
+                    /timeout/i.test(msg);
+
+                if (!isRetryable || attempt === maxAttempts) {
+                    throw error;
+                }
+
+                await new Promise(r => setTimeout(r, retryDelayMs));
+            }
+        }
+    }
+
     // 轮询外部接口，等待对应 APK 打包完成
     async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 30000, chatId, statusMsgId, branchName) {
         const slugForPack = (appNameSlug || '').toLowerCase();
@@ -1704,15 +1744,7 @@ function isBranchAllowed(branchName) {
             const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
             console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
 
-            const response = await axios.get(downloadUrl, { responseType: 'stream', timeout: 600000 });
-
-            await new Promise((resolve, reject) => {
-                const writer = fs.createWriteStream(localApkPath);
-                response.data.pipe(writer);
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-            console.log(chalk.green(`📦 APK 下载完成: ${localApkPath}`));
+            await downloadFileWithRetry(downloadUrl, localApkPath, 3, 600000);
 
             // 7. 上传 APK 到 S3（不上传到 Telegram）
             // 为了与 appDownPath 完全一致，这里优先使用当前分支配置中的 appName 作为 S3 Key
