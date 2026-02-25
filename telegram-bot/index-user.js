@@ -1389,7 +1389,7 @@ function isBranchAllowed(branchName) {
                     `🚀 已开始打包 APK\n\n` +
                     `📁 项目: ${project.name}\n` +
                     `🌿 分支: ${actualBranchName}\n` +
-                    `⏱ 将在后台最多检查 6 次打包结果（约 2 分钟，每 20 秒一次）。`,
+                    `⏱ 将在后台最多检查 10 次打包结果（约 5 分钟，每 30 秒一次）。`,
             });
             statusMsgId = status.id;
         } catch (e) {
@@ -1452,7 +1452,7 @@ function isBranchAllowed(branchName) {
     }
 
     // 轮询外部接口，等待对应 APK 打包完成
-    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 6, intervalMs = 20000, chatId, statusMsgId, branchName) {
+    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 30000, chatId, statusMsgId, branchName) {
         const slugForPack = (appNameSlug || '').toLowerCase();
         const targetName = `app-${slugForPack}.apk`;
         const unsignedPattern = new RegExp(`^unsigned_${slugForPack}_.+_modified\\.apk$`, 'i');
@@ -1689,8 +1689,8 @@ function isBranchAllowed(branchName) {
 
             await callPackApi(appNameSlug, webUrl, imageUrl);
 
-            // 5. 轮询等待打包完成（最多 6 次，每次间隔 20 秒）
-            const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 6, 20000, chatId, statusMsgId, branchName);
+            // 5. 轮询等待打包完成（最多 10 次，每次间隔 30 秒）
+            const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 10, 30000, chatId, statusMsgId, branchName);
 
             // 6. 下载打包完成的 APK 到本地
             const tempDir = path.join(__dirname, 'tmp');
