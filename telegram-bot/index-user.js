@@ -841,7 +841,7 @@ function isBranchAllowed(branchName) {
 
     // 处理文件任务（从队列中取出并处理）
     async function processFileTask(task) {
-        const { fileName, branchName, actualBranchName, chatId } = task;
+        const { fileName, branchName, actualBranchName, project, chatId } = task;
 
         // 设置处理状态
         isProcessingFile = true;
@@ -854,7 +854,7 @@ function isBranchAllowed(branchName) {
             }
 
             // 切换到该分支并拉取最新代码，确保读取的是远程最新配置
-            const currentBranch = await builder.runCommand('git rev-parse --abbrev-ref HEAD');
+            const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
             let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
 
             try {
@@ -867,8 +867,8 @@ function isBranchAllowed(branchName) {
                 } else {
                     // 先 fetch 获取远程最新信息
                     if (config.build.autoFetchPull) {
-                        console.log(chalk.cyan(`📥 获取远程分支信息...`));
-                        const fetchResult = await builder.runCommand('git fetch --all');
+                        console.log(chalk.cyan(`📥 [${project.name}] 获取远程分支信息...`));
+                        const fetchResult = await project.builder.runCommand('git fetch --all');
                         if (!fetchResult.success) {
                             console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支...`));
                         } else {
@@ -877,8 +877,8 @@ function isBranchAllowed(branchName) {
                     }
 
                     // 切换到目标分支
-                    console.log(chalk.cyan(`📥 切换到分支 ${targetBranch}...`));
-                    const checkoutResult = await builder.runCommand(`git checkout ${targetBranch}`);
+                    console.log(chalk.cyan(`📥 [${project.name}] 切换到分支 ${targetBranch}...`));
+                    const checkoutResult = await project.builder.runCommand(`git checkout ${targetBranch}`);
 
                     if (!checkoutResult.success) {
                         throw new Error(`切换分支失败: ${checkoutResult.error}`);
@@ -888,8 +888,8 @@ function isBranchAllowed(branchName) {
 
                 // 拉取最新代码（确保读取的是远程最新配置）
                 if (config.build.autoFetchPull) {
-                    console.log(chalk.cyan(`📥 拉取分支最新代码...`));
-                    const pullResult = await builder.runCommand('git pull');
+                    console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
+                    const pullResult = await project.builder.runCommand('git pull');
                     if (!pullResult.success) {
                         console.log(chalk.yellow(`⚠ Pull 失败，使用本地代码: ${pullResult.error}`));
                     } else {
@@ -898,8 +898,8 @@ function isBranchAllowed(branchName) {
                 }
 
                 // 读取配置文件（现在读取的是最新代码）
-                console.log(chalk.cyan(`📖 读取配置文件...`));
-                const result = await readPackageIdFromBranch(builder.projectPath, actualBranchName);
+                console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件...`));
+                const result = await readPackageIdFromBranch(project.path, actualBranchName);
 
                 if (result.success) {
                     // 格式化 debug 信息
