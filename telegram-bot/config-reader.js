@@ -49,10 +49,22 @@ function extractBranchNameFromFileName(fileName) {
 }
 
 /**
- * 读取指定分支的 config.js 文件并提取 packageId / debug / appDownPath 的 app 名称
+ * 读取指定分支的 config.js 文件并提取
+ * - packageId
+ * - debug
+ * - appDownPath 的 app 文件名及中间的 slug
+ * - proxyShareUrlList 第一个域名（用于生成 web_url）
  * @param {string} projectPath - 项目路径
  * @param {string} branchName - 分支名
- * @returns {Promise<{success: boolean, packageId?: number|string, debug?: boolean, appName?: string, error?: string}>}
+ * @returns {Promise<{
+ *   success: boolean,
+ *   packageId?: number|string,
+ *   debug?: boolean,
+ *   appName?: string,
+ *   appNameSlug?: string,
+ *   primaryDomain?: string,
+ *   error?: string
+ * }>}
  */
 async function readPackageIdFromBranch(projectPath, branchName) {
     const configPath = path.join(projectPath, 'src', 'config', 'config.js');
@@ -72,6 +84,8 @@ async function readPackageIdFromBranch(projectPath, branchName) {
         let packageId = null;
         let debug = null;
         let appName = null;
+        let appNameSlug = null;
+        let primaryDomain = null;
 
         // 尝试解析 packageId
         const packageIdPatterns = [
@@ -125,8 +139,21 @@ async function readPackageIdFromBranch(projectPath, branchName) {
                 } else {
                     appName = fullPath;
                 }
+
+                if (appName) {
+                    const m = appName.match(/^app-(.+)\.apk$/i);
+                    if (m && m[1]) {
+                        appNameSlug = m[1]; // 例如 522luck
+                    }
+                }
                 break;
             }
+        }
+
+        // 尝试解析 proxyShareUrlList 的第一个域名
+        const proxyListMatch = fileContent.match(/proxyShareUrlList\s*:\s*\[\s*['"]([^'"]+)['"]/);
+        if (proxyListMatch && proxyListMatch[1]) {
+            primaryDomain = proxyListMatch[1]; // 例如 https://777natacao-777.com
         }
 
         // 如果至少找到了 packageId，就返回成功
@@ -135,7 +162,9 @@ async function readPackageIdFromBranch(projectPath, branchName) {
                 success: true,
                 packageId: packageId,
                 debug: debug !== null ? debug : undefined,
-                appName: appName || undefined
+                appName: appName || undefined,
+                appNameSlug: appNameSlug || undefined,
+                primaryDomain: primaryDomain || undefined
             };
         }
 

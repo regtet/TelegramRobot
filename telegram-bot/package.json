@@ -8,18 +8,25 @@
     "start:bot": "node index.js",
     "dev": "nodemon index-user.js"
   },
-  "keywords": ["telegram", "bot", "build", "automation"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "build",
+    "automation"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "telegram": "^2.22.2",
-    "input": "^1.0.1",
-    "dotenv": "^16.3.1",
+    "@aws-sdk/client-s3": "^3.996.0",
     "archiver": "^6.0.1",
-    "chalk": "^4.1.2"
+    "axios": "^1.13.5",
+    "chalk": "^4.1.2",
+    "dotenv": "^16.3.1",
+    "input": "^1.0.1",
+    "sharp": "^0.34.5",
+    "telegram": "^2.22.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   }
 }
-
