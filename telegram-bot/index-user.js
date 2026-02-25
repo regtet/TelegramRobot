@@ -77,7 +77,22 @@ const client = new TelegramClient(
     clientOptions
 );
 
-const builder = new Builder(config.buildProjectPath, config.build);
+// 多项目支持：WG-WEB（主仓库） + WGAME-WEB（备用仓库）
+const projectAPath = config.buildProjectPath; // 例如 ../WG-WEB
+const projectBPath = process.env.BUILD_PROJECT_PATH_B
+    ? path.resolve(__dirname, process.env.BUILD_PROJECT_PATH_B)
+    : null;
+
+const builderA = new Builder(projectAPath, config.build); // WG-WEB
+const builderB = projectBPath ? new Builder(projectBPath, config.build) : null;
+
+// 默认 builder 保持为 WG-WEB，用于旧逻辑（检测 / 构建队列等）
+const builder = builderA;
+
+const projects = [
+    { name: 'WG-WEB', builder: builderA, path: projectAPath },
+    ...(builderB ? [{ name: 'WGAME-WEB', builder: builderB, path: projectBPath }] : []),
+];
 
 // S3 配置
 const S3_REGION = process.env.AWS_REGION || 'sa-east-1';
@@ -1278,24 +1293,45 @@ function isBranchAllowed(branchName) {
         }
     }
 
+    // 在多个项目中解析出对应的项目和分支名（先 WG-WEB，再 WGAME-WEB）
+    async function resolveProjectAndBranch(branchName) {
+        for (const proj of projects) {
+            // 清理项目的分支缓存，确保使用远程最新信息
+            proj.builder._branchesCache = null;
+            try {
+                const { valid } = await proj.builder.validateBranches([branchName]);
+                if (valid && valid.length > 0) {
+                    return {
+                        project: proj,              // { name, builder, path }
+                        actualBranchName: valid[0], // 真实分支名（可能大小写不同）
+                    };
+                }
+            } catch (e) {
+                console.log(chalk.yellow(`在项目 ${proj.name} 中验证分支 ${branchName} 失败: ${e.message}`));
+            }
+        }
+        return null;
+    }
+
     // 统一触发 APK 打包的入口（按钮 + 文本命令共用）
     async function triggerApkBuildForBranch(branchName, chatId) {
-        // 先通过 validateBranches 映射到真实分支名（支持大小写 / 远程分支）
-        let targetBranchName = branchName;
+        // 先在 WG-WEB / WGAME-WEB 中解析出实际项目和分支名
+        let resolved;
         try {
-            const validateResult = await builder.validateBranches([branchName]);
-            if (validateResult && validateResult.valid && validateResult.valid.length > 0) {
-                targetBranchName = validateResult.valid[0];
-            } else {
-                throw new Error('未在远程仓库中找到对应分支');
-            }
+            resolved = await resolveProjectAndBranch(branchName);
         } catch (error) {
             console.log(chalk.red('验证分支失败:'), error.message);
+        }
+
+        if (!resolved) {
             await client.sendMessage(chatId, {
-                message: `❌ 打包失败：未找到分支 ${branchName}（请确认远端是否存在，或稍后重试）`,
+                message: `❌ 打包失败：WG-WEB 和 WGAME-WEB 中都未找到分支 ${branchName}，请确认远端是否存在`,
             });
             return;
         }
+
+        const { project, actualBranchName } = resolved;
+        console.log(chalk.cyan(`将在项目 ${project.name} 中打包分支: ${actualBranchName}`));
 
         // 发送一条群组提示：开始打包该分支的 APK
         let statusMsgId = null;
@@ -1303,8 +1339,9 @@ function isBranchAllowed(branchName) {
             const status = await client.sendMessage(chatId, {
                 message:
                     `🚀 已开始打包 APK\n\n` +
-                    `🌿 分支: ${targetBranchName}\n` +
-                    `⏱ 将在后台最多检查 40 次打包结果（约 13 分钟，每 20 秒一次）。`,
+                    `📁 项目: ${project.name}\n` +
+                    `🌿 分支: ${actualBranchName}\n` +
+                    `⏱ 将在后台最多检查 6 次打包结果（约 2 分钟，每 20 秒一次）。`,
             });
             statusMsgId = status.id;
         } catch (e) {
@@ -1321,7 +1358,7 @@ function isBranchAllowed(branchName) {
             statusMsgId,
         };
 
-        await handleBuildApkForBranch(targetBranchName, chatId, options);
+        await handleBuildApkForBranch(project, actualBranchName, chatId, options);
     }
 
     // 调用外部打包接口，触发 APK 构建
@@ -1367,7 +1404,7 @@ function isBranchAllowed(branchName) {
     }
 
     // 轮询外部接口，等待对应 APK 打包完成
-    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 40, intervalMs = 20000, chatId, statusMsgId, branchName) {
+    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 6, intervalMs = 20000, chatId, statusMsgId, branchName) {
         const slugForPack = (appNameSlug || '').toLowerCase();
         const targetName = `app-${slugForPack}.apk`;
         const unsignedPattern = new RegExp(`^unsigned_${slugForPack}_.+_modified\\.apk$`, 'i');
@@ -1441,14 +1478,14 @@ function isBranchAllowed(branchName) {
     }
 
     // 处理按钮 / 文本命令触发的 APK 打包 + 上传到 S3
-    async function handleBuildApkForBranch(branchName, chatId, { packageId, appName, appNameSlug, primaryDomain, statusMsgId }) {
-        console.log(chalk.cyan(`\n🚀 开始为分支 ${branchName} 打包 APK`));
+    async function handleBuildApkForBranch(project, branchName, chatId, { packageId, appName, appNameSlug, primaryDomain, statusMsgId }) {
+        console.log(chalk.cyan(`\n🚀 开始为项目 ${project.name} 的分支 ${branchName} 打包 APK`));
 
         // 全流程中需要多处使用的 Logo 上传结果
         let logoInfo = null;
 
         // 1. 记录当前分支
-        const currentBranch = await builder.runCommand('git rev-parse --abbrev-ref HEAD');
+        const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
         let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
 
         try {
@@ -1456,7 +1493,7 @@ function isBranchAllowed(branchName) {
             if (originalBranch !== branchName) {
                 if (config.build.autoFetchPull) {
                     console.log(chalk.cyan('📥 获取远程分支信息...'));
-                    const fetchResult = await builder.runCommand('git fetch --all');
+                    const fetchResult = await project.builder.runCommand('git fetch --all');
                     if (!fetchResult.success) {
                         console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支: ${fetchResult.error}`));
                     } else {
@@ -1465,12 +1502,12 @@ function isBranchAllowed(branchName) {
                 }
 
                 console.log(chalk.cyan(`📥 切换到分支 ${branchName}...`));
-                let checkoutResult = await builder.runCommand(`git checkout ${branchName}`);
+                let checkoutResult = await project.builder.runCommand(`git checkout ${branchName}`);
 
                 // 如果本地不存在该分支，尝试从远程创建
                 if (!checkoutResult.success) {
                     console.log(chalk.yellow(`⚠ 本地切换失败，尝试从远程 origin/${branchName} 创建分支...`));
-                    const createResult = await builder.runCommand(`git checkout -b ${branchName} origin/${branchName}`);
+                    const createResult = await project.builder.runCommand(`git checkout -b ${branchName} origin/${branchName}`);
                     if (!createResult.success) {
                         throw new Error(`切换分支失败: ${checkoutResult.error || createResult.error}`);
                     }
@@ -1484,7 +1521,7 @@ function isBranchAllowed(branchName) {
 
             if (config.build.autoFetchPull) {
                 console.log(chalk.cyan('📥 拉取分支最新代码...'));
-                const pullResult = await builder.runCommand('git pull');
+                const pullResult = await project.builder.runCommand('git pull');
                 if (!pullResult.success) {
                     console.log(chalk.yellow(`⚠ Pull 失败，使用本地代码: ${pullResult.error}`));
                 } else {
@@ -1495,7 +1532,7 @@ function isBranchAllowed(branchName) {
             // 从当前分支最新配置中解析 appDownPath / proxyShareUrlList，确保不会串分支
             try {
                 console.log(chalk.cyan('📖 从当前分支配置解析 appDownPath / proxyShareUrlList...'));
-                const cfg = await readPackageIdFromBranch(builder.projectPath, branchName);
+                const cfg = await readPackageIdFromBranch(project.path, branchName);
                 if (cfg && cfg.success) {
                     appName = cfg.appName || `app-${branchName}.apk`;
 
@@ -1527,7 +1564,7 @@ function isBranchAllowed(branchName) {
             // 3. 上传 logo（gulu_top.avif -> png）到 S3（实际转换为 PNG 再上传）
             try {
                 const logoRelativePath = path.join('home', 'img', 'configFile', 'gulu_top.avif');
-                const logoPath = path.join(builder.projectPath, logoRelativePath);
+                const logoPath = path.join(project.path, logoRelativePath);
 
                 if (!fs.existsSync(logoPath)) {
                     console.log(chalk.yellow(`⚠ 未找到 logo 文件: ${logoPath}`));
@@ -1604,8 +1641,8 @@ function isBranchAllowed(branchName) {
 
             await callPackApi(appNameSlug, webUrl, imageUrl);
 
-            // 5. 轮询等待打包完成
-            const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 40, 20000, chatId, statusMsgId, branchName);
+            // 5. 轮询等待打包完成（最多 6 次，每次间隔 20 秒）
+            const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 6, 20000, chatId, statusMsgId, branchName);
 
             // 6. 下载打包完成的 APK 到本地
             const tempDir = path.join(__dirname, 'tmp');
@@ -1613,8 +1650,8 @@ function isBranchAllowed(branchName) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
 
-            const apkFileName = packed.name; // 例如 app-wg-burgguer.apk
-            const localApkPath = path.join(tempDir, apkFileName);
+            const apkFileNameFromServer = packed.name; // 例如 app-terrawin66.apk
+            const localApkPath = path.join(tempDir, apkFileNameFromServer);
 
             const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
             console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
@@ -1630,20 +1667,21 @@ function isBranchAllowed(branchName) {
             console.log(chalk.green(`📦 APK 下载完成: ${localApkPath}`));
 
             // 7. 上传 APK 到 S3（不上传到 Telegram）
-            // 为了与 appDownPath 完全一致，这里直接使用文件名作为 S3 Key
-            // 例如 appDownPath: https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-burgguer.apk
-            // 则 S3 Key == app-wg-burgguer.apk
-            const s3Key = apkFileName;
+            // 为了与 appDownPath 完全一致，这里优先使用当前分支配置中的 appName 作为 S3 Key
+            // 例如 appDownPath: https://gulu3.s3.sa-east-1.amazonaws.com/app-Terrawin66.apk
+            // 则 S3 Key == app-Terrawin66.apk
+            const s3Key = appName || apkFileNameFromServer;
 
             const { key, url } = await uploadFileToS3(localApkPath, s3Key, 'application/vnd.android.package-archive');
 
             // 8. 通知 Telegram：只发 S3 路径和下载链接
+            const finalApkNameForLog = appName || apkFileNameFromServer;
             const msg =
                 `✅ APK 打包并上传完成\n\n` +
                 `🌿 分支: ${branchName}\n` +
                 (primaryDomain ? `🌐 主域名: ${primaryDomain}\n` : '') +
                 (packageId ? `🆔 Package ID: ${packageId}\n` : '') +
-                `📱 APK 文件名: ${apkFileName}\n` +
+                `📱 APK 文件名: ${finalApkNameForLog}\n` +
                 `🗂 S3 路径: ${key}\n` +
                 `🔗 下载地址: ${url}`;
 
