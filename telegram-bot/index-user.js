@@ -1450,8 +1450,8 @@ function isBranchAllowed(branchName) {
         try {
             if (messageId) {
                 await client.editMessage(chatId, {
-                    id: messageId,
-                    message: text,
+                    message: messageId,
+                    text: text,
                 });
             } else {
                 const msg = await client.sendMessage(chatId, { message: text });
