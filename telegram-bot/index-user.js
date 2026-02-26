@@ -118,6 +118,8 @@ const s3Client = new S3Client({
     let isApkBuilding = false;
     let apkBuildQueue = [];
     let currentApkBuildBranch = '';
+    let currentApkBuildProjectName = '';
+    let currentApkBuildChatId = null;
 
 // 文件处理队列
 let isProcessingFile = false; // 是否正在处理文件
@@ -1380,47 +1382,94 @@ function isBranchAllowed(branchName) {
         throw new Error(`切换分支失败: ${errorMsg}`);
     }
 
+    // APK 构建面板消息（每个 chatId + projectName 一条）
+    const apkPanelMessages = new Map(); // key: `${chatId}_${projectName}` -> messageId
+
+    function getApkPanelKey(chatId, projectName) {
+        return `${String(chatId)}_${projectName}`;
+    }
+
+    function buildApkPanelText(projectName, chatId) {
+        const lines = [];
+
+        // 计算当前项目在该群里的构建中 / 排队中列表
+        const building = [];
+        if (
+            isApkBuilding &&
+            currentApkBuildProjectName === projectName &&
+            currentApkBuildChatId &&
+            String(currentApkBuildChatId) === String(chatId)
+        ) {
+            building.push(currentApkBuildBranch);
+        }
+
+        const queued = apkBuildQueue
+            .filter(task =>
+                task.projectName === projectName &&
+                String(task.chatId) === String(chatId)
+            )
+            .map(task => task.displayBranch || task.branchName);
+
+        const total = building.length + queued.length;
+        const queuedCount = queued.length;
+
+        lines.push(`🛠 ${projectName} APK 构建面板`, '');
+
+        lines.push('🚧 构建中');
+        if (building.length > 0) {
+            for (const name of building) {
+                lines.push(`• ${name}`);
+            }
+        } else {
+            lines.push('• （空）');
+        }
+        lines.push('');
+
+        lines.push(`⏳ 排队中（${queuedCount}）`);
+        if (queuedCount > 0) {
+            for (const name of queued) {
+                lines.push(`• ${name}`);
+            }
+        } else {
+            lines.push('• （空）');
+        }
+        lines.push('');
+
+        lines.push(`📊 当前任务总数：${total}`);
+
+        return lines.join('\n');
+    }
+
+    async function updateApkPanel(chatId, projectName) {
+        if (!projectName) return;
+        const key = getApkPanelKey(chatId, projectName);
+        const messageId = apkPanelMessages.get(key) || null;
+        const text = buildApkPanelText(projectName, chatId);
+
+        // 如果当前项目在该群里没有任何任务，暂时不删除旧面板，只是不再更新内容
+        try {
+            if (messageId) {
+                await client.editMessage(chatId, {
+                    id: messageId,
+                    message: text,
+                });
+            } else {
+                const msg = await client.sendMessage(chatId, { message: text });
+                apkPanelMessages.set(key, msg.id);
+            }
+        } catch (e) {
+            console.log(chalk.yellow('更新 APK 构建面板失败:', e.message));
+        }
+    }
+
     // 将 APK 打包任务加入队列，按顺序执行（按钮、文本命令、压缩包自动触发共用）
     async function enqueueApkBuild(branchName, chatId) {
-        // 如果当前正在打包同一分支，直接提示并返回
-        if (isApkBuilding && currentApkBuildBranch === branchName) {
-            try {
-                await client.sendMessage(chatId, {
-                    message:
-                        `⚠️ 分支已在打包中\n\n` +
-                        `🌿 分支：${branchName}`,
-                });
-            } catch (e) {
-                console.log(chalk.yellow('发送“分支已在打包中”提示失败:', e.message));
-            }
-            return;
-        }
-
-        // 检查是否已在 APK 队列中（同一 chatId + 分支 名）
-        const existingIndex = apkBuildQueue.findIndex(task =>
-            task.branchName === branchName && String(task.chatId) === String(chatId)
-        );
-        if (existingIndex !== -1) {
-            const inProgress = isApkBuilding ? 1 : 0;
-            const total = inProgress + apkBuildQueue.length;
-            const position = inProgress + existingIndex + 1;
-            try {
-                await client.sendMessage(chatId, {
-                    message:
-                        `⚠️ 分支已在队列中\n\n` +
-                        `🌿 分支：${branchName}\n` +
-                        `📊 队列位置：${position} / ${total}`,
-                });
-            } catch (e) {
-                console.log(chalk.yellow('发送“分支已在队列中”提示失败:', e.message));
-            }
-            return;
-        }
-
-        // 解析项目和实际分支名，用于展示队列信息
+        // 先解析项目和实际分支名，用于后续统一去重与展示
         let displayProject = '未知项目';
         let displayBranch = branchName;
         let resolvedActualBranch = branchName;
+        let project = null;
+
         try {
             const resolved = await resolveProjectAndBranch(branchName);
             if (!resolved) {
@@ -1429,7 +1478,8 @@ function isBranchAllowed(branchName) {
                 });
                 return;
             }
-            displayProject = resolved.project && resolved.project.name ? resolved.project.name : displayProject;
+            project = resolved.project;
+            displayProject = project && project.name ? project.name : displayProject;
             displayBranch = resolved.actualBranchName || branchName;
             resolvedActualBranch = resolved.actualBranchName || branchName;
         } catch (error) {
@@ -1444,38 +1494,62 @@ function isBranchAllowed(branchName) {
             return;
         }
 
-        // 入队（使用解析后的实际分支名）
-        apkBuildQueue.push({ branchName: resolvedActualBranch, chatId });
-
-        const inProgress = isApkBuilding ? 1 : 0;
-        const total = inProgress + apkBuildQueue.length;
-        const position = total; // 新任务位于队尾
-
-        let statusMsgId = null;
-        try {
-            const status = await client.sendMessage(chatId, {
-                message:
-                    `🛠️ 构建任务已创建\n\n` +
-                    `📦 项目：${displayProject}\n` +
-                    `🌿 分支：${displayBranch}\n` +
-                    `📊 队列位置：${position} / ${total}\n\n` +
-                    `⏱️ 构建预计耗时：≤ 5 分钟\n` +
-                    `🔄 状态检查：每 30 秒自动轮询`,
-            });
-            statusMsgId = status.id;
-        } catch (e) {
-            console.log(chalk.yellow('发送“构建任务已创建”消息失败:', e.message));
+        // 使用实际分支名进行去重判断
+        // 如果当前正在打包同一项目同一分支，直接提示并返回
+        if (
+            isApkBuilding &&
+            currentApkBuildProjectName === displayProject &&
+            currentApkBuildBranch === resolvedActualBranch &&
+            currentApkBuildChatId &&
+            String(currentApkBuildChatId) === String(chatId)
+        ) {
+            try {
+                await client.sendMessage(chatId, {
+                    message:
+                        `⚠️ 分支已在打包中\n\n` +
+                        `📦 项目：${displayProject}\n` +
+                        `🌿 分支：${displayBranch}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送“分支已在打包中”提示失败:', e.message));
+            }
+            return;
         }
 
-        // 将状态消息 ID 和展示信息挂到队列最后一个任务上
-        const lastTask = apkBuildQueue[apkBuildQueue.length - 1];
-        if (lastTask) {
-            lastTask.statusMsgId = statusMsgId;
-            lastTask.projectName = displayProject;
-            lastTask.displayBranch = displayBranch;
+        // 检查是否已在 APK 队列中（同一 chatId + 项目 + 分支）
+        const existingIndex = apkBuildQueue.findIndex(task =>
+            task.projectName === displayProject &&
+            task.branchName === resolvedActualBranch &&
+            String(task.chatId) === String(chatId)
+        );
+        if (existingIndex !== -1) {
+            try {
+                await client.sendMessage(chatId, {
+                    message:
+                        `⚠️ 分支已在队列中\n\n` +
+                        `📦 项目：${displayProject}\n` +
+                        `🌿 分支：${displayBranch}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送“分支已在队列中”提示失败:', e.message));
+            }
+            // 同样更新一次面板，确保面板内容最新
+            await updateApkPanel(chatId, displayProject);
+            return;
         }
 
-        console.log(chalk.cyan(`📋 APK 打包加入队列: ${displayBranch} (当前第 ${position} / ${total} 个)`));
+        // 入队（使用解析后的实际分支名 + 项目信息）
+        apkBuildQueue.push({
+            branchName: resolvedActualBranch,
+            displayBranch,
+            chatId,
+            projectName: displayProject,
+        });
+
+        console.log(chalk.cyan(`📋 APK 打包加入队列: [${displayProject}] ${displayBranch}`));
+
+        // 更新面板
+        await updateApkPanel(chatId, displayProject);
 
         if (!isApkBuilding) {
             processNextApkInQueue();
@@ -1489,9 +1563,16 @@ function isBranchAllowed(branchName) {
         const task = apkBuildQueue.shift();
         isApkBuilding = true;
         currentApkBuildBranch = task.branchName;
-        console.log(chalk.cyan(`\n📋 处理 APK 队列任务: ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
+        currentApkBuildProjectName = task.projectName || '未知项目';
+        currentApkBuildChatId = task.chatId;
+
+        console.log(chalk.cyan(`\n📋 处理 APK 队列任务: [${currentApkBuildProjectName}] ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
+
+        // 刚开始处理时刷新一次面板
+        await updateApkPanel(task.chatId, currentApkBuildProjectName);
+
         try {
-            await triggerApkBuildForBranch(task.branchName, task.chatId, task.statusMsgId || null);
+            await triggerApkBuildForBranch(task.branchName, task.chatId, null);
         } catch (error) {
             console.error(chalk.red('APK 队列任务失败:'), error);
             try {
@@ -1504,6 +1585,12 @@ function isBranchAllowed(branchName) {
         } finally {
             isApkBuilding = false;
             currentApkBuildBranch = '';
+            currentApkBuildProjectName = '';
+            currentApkBuildChatId = null;
+
+            // 任务完成后再次刷新面板
+            await updateApkPanel(task.chatId, task.projectName || '未知项目');
+
             setTimeout(() => processNextApkInQueue(), 2000);
         }
     }
@@ -1528,26 +1615,8 @@ function isBranchAllowed(branchName) {
         const { project, actualBranchName } = resolved;
         console.log(chalk.cyan(`将在项目 ${project.name} 中打包分支: ${actualBranchName}`));
 
-        // 如果队列阶段已经发送了“构建任务已创建”消息，则复用其 statusMsgId
-        let statusMsgId = existingStatusMsgId || null;
-
-        // 如果没有传入现有状态消息，则在此创建一条（兼容直接调用的情况）
-        if (!statusMsgId) {
-            try {
-                const status = await client.sendMessage(chatId, {
-                    message:
-                        `🛠️ 构建任务已创建\n\n` +
-                        `📦 项目：${project.name}\n` +
-                        `🌿 分支：${actualBranchName}\n` +
-                        `📊 队列位置：1 / 1\n\n` +
-                        `⏱️ 构建预计耗时：≤ 5 分钟\n` +
-                        `🔄 状态检查：每 30 秒自动轮询`,
-                });
-                statusMsgId = status.id;
-            } catch (e) {
-                console.log(chalk.yellow('发送打包开始提示失败:', e.message));
-            }
-        }
+        // 不再单独发送“构建任务已创建”消息，由 APK 构建面板统一展示队列与进度
+        const statusMsgId = null;
 
         // 这里不再预先读取配置，所有与 appDownPath / proxyShareUrlList 相关的信息
         // 都在 handleBuildApkForBranch 中，在切换到目标分支之后统一读取，避免串分支。
@@ -1883,16 +1952,20 @@ function isBranchAllowed(branchName) {
 
             const { key, url } = await uploadFileToS3(localApkPath, s3Key, 'application/vnd.android.package-archive');
 
-            // 8. 第二条消息：Logo 已上传到 S3 + 地址，与 APK 打包并上传完成合并为一条
+            // 8. 第二条消息：APK 结果 + Logo 信息（Logo 放在 APK 信息上方）
             const finalApkNameForLog = appName || apkFileNameFromServer;
-            const logoPart = logoInfo && logoInfo.url
-                ? `🎨 Logo 已上传到 S3\n🔗 地址: ${logoInfo.url}\n\n`
-                : '';
-            const msg =
-                logoPart +
+            let msg =
                 `✅ APK 打包并上传完成\n\n` +
                 `🌿 分支: ${branchName}\n` +
-                (primaryDomain ? `🌐 主域名: ${primaryDomain}\n` : '') +
+                (primaryDomain ? `🌐 主域名: ${primaryDomain}\n` : '');
+
+            if (logoInfo && logoInfo.url) {
+                msg +=
+                    `🎨 Logo 已上传到 S3\n` +
+                    `🔗 地址: ${logoInfo.url}\n`;
+            }
+
+            msg +=
                 (packageId ? `🆔 Package ID: ${packageId}\n` : '') +
                 `📱 APK 文件名: ${finalApkNameForLog}\n` +
                 `🗂 S3 路径: ${key}\n` +
