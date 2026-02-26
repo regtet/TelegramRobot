@@ -107,12 +107,17 @@ const s3Client = new S3Client({
 });
 
 // 打包状态锁
-// 构建状态管理
-let isBuilding = false;
-let currentBuildBranch = '';
-let buildQueue = []; // 打包排队列表
-let currentBuildId = null; // 当前构建ID
-let shouldCancelBuild = false; // 取消标志
+    // 构建状态管理
+    let isBuilding = false;
+    let currentBuildBranch = '';
+    let buildQueue = []; // 普通打包（zip）排队列表
+    let currentBuildId = null; // 当前构建ID
+    let shouldCancelBuild = false; // 取消标志
+
+    // APK 打包队列（按顺序执行，避免多条消息交错）
+    let isApkBuilding = false;
+    let apkBuildQueue = [];
+    let currentApkBuildBranch = '';
 
 // 文件处理队列
 let isProcessingFile = false; // 是否正在处理文件
@@ -337,20 +342,7 @@ function isBranchAllowed(branchName) {
                 }
 
                 console.log(chalk.cyan(`收到按钮：打包 APK - 分支 ${branchNameForApk}`));
-
-                try {
-                    await triggerApkBuildForBranch(branchNameForApk, message.chatId);
-                } catch (error) {
-                    console.error(chalk.red('打包 APK 失败:'), error);
-                    try {
-                        await client.sendMessage(message.chatId, {
-                            message: `❌ 打包 APK 失败：${error.message}`,
-                        });
-                    } catch (e) {
-                        console.log(chalk.yellow('发送失败提示消息失败:', e.message));
-                    }
-                }
-
+                await enqueueApkBuild(branchNameForApk, message.chatId);
                 return;
             }
 
@@ -394,20 +386,7 @@ function isBranchAllowed(branchName) {
                 }
 
                 console.log(chalk.cyan(`收到打包APK 命令，分支: ${branchNameForApk}`));
-
-                try {
-                    await triggerApkBuildForBranch(branchNameForApk, message.chatId);
-                } catch (error) {
-                    console.error(chalk.red('打包 APK 失败:'), error);
-                    try {
-                        await client.sendMessage(message.chatId, {
-                            message: `❌ 打包 APK 失败：${error.message}`,
-                        });
-                    } catch (e) {
-                        console.log(chalk.yellow('发送失败提示消息失败:', e.message));
-                    }
-                }
-
+                await enqueueApkBuild(branchNameForApk, message.chatId);
                 return;
             }
 
@@ -876,14 +855,8 @@ function isBranchAllowed(branchName) {
                         }
                     }
 
-                    // 切换到目标分支
-                    console.log(chalk.cyan(`📥 [${project.name}] 切换到分支 ${targetBranch}...`));
-                    const checkoutResult = await project.builder.runCommand(`git checkout ${targetBranch}`);
-
-                    if (!checkoutResult.success) {
-                        throw new Error(`切换分支失败: ${checkoutResult.error}`);
-                    }
-                    console.log(chalk.green(`✓ 已切换到 ${targetBranch}`));
+                    // 使用安全切换逻辑（自动清理未解决冲突 & 远程创建）
+                    await safeCheckoutBranch(project, targetBranch);
                 }
 
                 // 拉取最新代码（确保读取的是远程最新配置）
@@ -939,35 +912,28 @@ function isBranchAllowed(branchName) {
                         primaryDomain: result.primaryDomain,
                     });
 
-                    // 发送检测结果 + 回复键盘按钮（是否打包 APK）
+                    // 发送检测结果，并直接加入 APK 打包队列（自动触发打包流程）
                     try {
                         await client.sendMessage(chatId, {
-                            message: msg + `\n\n请选择是否打包 APK：`,
+                            message: msg + `\n\n✅ 已自动加入打包队列，将开始打包 APK。`,
                             parseMode: 'Markdown',
-                            // 普通回复键盘按钮，点击后会发送文本消息
-                            buttons: [
-                                [
-                                    `✅ 打包 APK - ${actualBranchName}`,
-                                    `❌ 不打包 - ${actualBranchName}`,
-                                ],
-                            ],
                         });
                     } catch (error) {
-                        // 如果 Markdown 或按钮发送失败，降级为纯文本
                         try {
                             await client.sendMessage(chatId, {
                                 message:
                                     `🔍 正在分析压缩包…\n` +
-                                    `🌿 分支匹配成功： ${branchName}\n` +
+                                    `🌿 分支匹配成功： ${actualBranchName}\n` +
                                     `📋 已自动检测到云端Package ID: ${result.packageId}\n` +
                                     `📱 App 名称：${appName}\n` +
                                     `${debugEmoji} 游服类型：${debugText} (${debugValue})\n\n` +
-                                    `⚠️ 按钮发送失败，请手动输入指令打包。`,
+                                    `✅ 已自动加入打包队列，将开始打包 APK。`,
                             });
                         } catch (err) {
                             console.log(chalk.yellow('发送消息失败:', err.message));
                         }
                     }
+                    await enqueueApkBuild(actualBranchName, chatId);
                 } else {
                     const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${actualBranchName}\n🧠 云端代码库扫描中…\n❌ 未检测到 packageId 配置`;
                     console.log(chalk.red(`❌ 分支 ${actualBranchName} 当前分支 未检测到packageId配置`));
@@ -1183,12 +1149,8 @@ function isBranchAllowed(branchName) {
                             }
                         }
 
-                        console.log(chalk.cyan(`📥 [${project.name}] 切换到分支 ${actualBranchName}...`));
-                        const checkoutResult = await project.builder.runCommand(`git checkout ${actualBranchName}`);
-                        if (!checkoutResult.success) {
-                            throw new Error(`切换分支失败: ${checkoutResult.error}`);
-                        }
-                        console.log(chalk.green(`✓ [${project.name}] 已切换到 ${actualBranchName}`));
+                        // 使用安全切换逻辑（自动清理未解决冲突 & 远程创建）
+                        await safeCheckoutBranch(project, actualBranchName);
                     }
 
                     // 2. 拉取最新代码
@@ -1361,8 +1323,193 @@ function isBranchAllowed(branchName) {
         return null;
     }
 
-    // 统一触发 APK 打包的入口（按钮 + 文本命令共用）
-    async function triggerApkBuildForBranch(branchName, chatId) {
+    // 安全切换到指定分支（自动处理未解决合并/索引冲突，并在必要时从远程创建分支）
+    async function safeCheckoutBranch(project, branchName) {
+        console.log(chalk.cyan(`📥 [${project.name}] 尝试切换到分支 ${branchName}...`));
+
+        let checkoutResult = await project.builder.runCommand(`git checkout ${branchName}`);
+        if (checkoutResult.success) {
+            console.log(chalk.green(`✓ [${project.name}] 已切换到分支 ${branchName}`));
+            return;
+        }
+
+        const errorMsg = checkoutResult.error || '';
+
+        // 情况 1：存在未解决的合并/索引冲突，自动强制清理后重试
+        const needClean =
+            /you need to resolve your current index first/i.test(errorMsg) ||
+            /You have unmerged paths/i.test(errorMsg) ||
+            /merge is in progress/i.test(errorMsg) ||
+            /rebase in progress/i.test(errorMsg);
+
+        if (needClean) {
+            console.log(chalk.yellow(`⚠ [${project.name}] 检测到未解决的合并/索引冲突，自动清理工作区后重试切换分支 ${branchName}...`));
+
+            // 这两个仓库专门用于打包，允许自动强制清理本地改动
+            await project.builder.runCommand('git merge --abort');
+            await project.builder.runCommand('git rebase --abort');
+            await project.builder.runCommand('git reset --hard');
+            await project.builder.runCommand('git clean -fd');
+
+            console.log(chalk.cyan(`📥 [${project.name}] 清理完成，重试切换分支 ${branchName}...`));
+            const retryResult = await project.builder.runCommand(`git checkout ${branchName}`);
+            if (retryResult.success) {
+                console.log(chalk.green(`✓ [${project.name}] 清理后已切换到分支 ${branchName}`));
+                return;
+            }
+
+            throw new Error(`切换分支失败: ${retryResult.error || errorMsg}`);
+        }
+
+        // 情况 2：本地不存在该分支，尝试从远程 origin 创建
+        const notFound =
+            /did not match any file\(s\) known to git/i.test(errorMsg) ||
+            /unknown revision or path not in the working tree/i.test(errorMsg);
+
+        if (notFound) {
+            console.log(chalk.yellow(`⚠ [${project.name}] 本地不存在分支 ${branchName}，尝试从远程 origin/${branchName} 创建...`));
+            const createResult = await project.builder.runCommand(`git checkout -b ${branchName} origin/${branchName}`);
+            if (!createResult.success) {
+                throw new Error(`切换分支失败: ${createResult.error || errorMsg}`);
+            }
+            console.log(chalk.green(`✓ [${project.name}] 已从远程创建并切换到分支 ${branchName}`));
+            return;
+        }
+
+        // 其它错误，直接抛出
+        throw new Error(`切换分支失败: ${errorMsg}`);
+    }
+
+    // 将 APK 打包任务加入队列，按顺序执行（按钮、文本命令、压缩包自动触发共用）
+    async function enqueueApkBuild(branchName, chatId) {
+        // 如果当前正在打包同一分支，直接提示并返回
+        if (isApkBuilding && currentApkBuildBranch === branchName) {
+            try {
+                await client.sendMessage(chatId, {
+                    message:
+                        `⚠️ 分支已在打包中\n\n` +
+                        `🌿 分支：${branchName}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送“分支已在打包中”提示失败:', e.message));
+            }
+            return;
+        }
+
+        // 检查是否已在 APK 队列中（同一 chatId + 分支 名）
+        const existingIndex = apkBuildQueue.findIndex(task =>
+            task.branchName === branchName && String(task.chatId) === String(chatId)
+        );
+        if (existingIndex !== -1) {
+            const inProgress = isApkBuilding ? 1 : 0;
+            const total = inProgress + apkBuildQueue.length;
+            const position = inProgress + existingIndex + 1;
+            try {
+                await client.sendMessage(chatId, {
+                    message:
+                        `⚠️ 分支已在队列中\n\n` +
+                        `🌿 分支：${branchName}\n` +
+                        `📊 队列位置：${position} / ${total}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送“分支已在队列中”提示失败:', e.message));
+            }
+            return;
+        }
+
+        // 解析项目和实际分支名，用于展示队列信息
+        let displayProject = '未知项目';
+        let displayBranch = branchName;
+        let resolvedActualBranch = branchName;
+        try {
+            const resolved = await resolveProjectAndBranch(branchName);
+            if (!resolved) {
+                await client.sendMessage(chatId, {
+                    message: `❌ 打包失败：WG-WEB 和 WGAME-WEB 中都未找到分支 ${branchName}，请确认远端是否存在`,
+                });
+                return;
+            }
+            displayProject = resolved.project && resolved.project.name ? resolved.project.name : displayProject;
+            displayBranch = resolved.actualBranchName || branchName;
+            resolvedActualBranch = resolved.actualBranchName || branchName;
+        } catch (error) {
+            console.log(chalk.red('验证分支失败(队列加入时):'), error.message);
+            try {
+                await client.sendMessage(chatId, {
+                    message: `❌ 打包失败：WG-WEB 和 WGAME-WEB 中都未找到分支 ${branchName}，请确认远端是否存在`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送打包失败提示失败:', e.message));
+            }
+            return;
+        }
+
+        // 入队（使用解析后的实际分支名）
+        apkBuildQueue.push({ branchName: resolvedActualBranch, chatId });
+
+        const inProgress = isApkBuilding ? 1 : 0;
+        const total = inProgress + apkBuildQueue.length;
+        const position = total; // 新任务位于队尾
+
+        let statusMsgId = null;
+        try {
+            const status = await client.sendMessage(chatId, {
+                message:
+                    `🛠️ 构建任务已创建\n\n` +
+                    `📦 项目：${displayProject}\n` +
+                    `🌿 分支：${displayBranch}\n` +
+                    `📊 队列位置：${position} / ${total}\n\n` +
+                    `⏱️ 构建预计耗时：≤ 5 分钟\n` +
+                    `🔄 状态检查：每 30 秒自动轮询`,
+            });
+            statusMsgId = status.id;
+        } catch (e) {
+            console.log(chalk.yellow('发送“构建任务已创建”消息失败:', e.message));
+        }
+
+        // 将状态消息 ID 和展示信息挂到队列最后一个任务上
+        const lastTask = apkBuildQueue[apkBuildQueue.length - 1];
+        if (lastTask) {
+            lastTask.statusMsgId = statusMsgId;
+            lastTask.projectName = displayProject;
+            lastTask.displayBranch = displayBranch;
+        }
+
+        console.log(chalk.cyan(`📋 APK 打包加入队列: ${displayBranch} (当前第 ${position} / ${total} 个)`));
+
+        if (!isApkBuilding) {
+            processNextApkInQueue();
+        }
+    }
+
+    async function processNextApkInQueue() {
+        if (apkBuildQueue.length === 0) {
+            return;
+        }
+        const task = apkBuildQueue.shift();
+        isApkBuilding = true;
+        currentApkBuildBranch = task.branchName;
+        console.log(chalk.cyan(`\n📋 处理 APK 队列任务: ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
+        try {
+            await triggerApkBuildForBranch(task.branchName, task.chatId, task.statusMsgId || null);
+        } catch (error) {
+            console.error(chalk.red('APK 队列任务失败:'), error);
+            try {
+                await client.sendMessage(task.chatId, {
+                    message: `❌ 打包 APK 失败：${error.message}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送失败提示失败:', e.message));
+            }
+        } finally {
+            isApkBuilding = false;
+            currentApkBuildBranch = '';
+            setTimeout(() => processNextApkInQueue(), 2000);
+        }
+    }
+
+    // 统一触发 APK 打包的入口（由队列处理器调用，或单次直接调用）
+    async function triggerApkBuildForBranch(branchName, chatId, existingStatusMsgId) {
         // 先在 WG-WEB / WGAME-WEB 中解析出实际项目和分支名
         let resolved;
         try {
@@ -1381,19 +1528,25 @@ function isBranchAllowed(branchName) {
         const { project, actualBranchName } = resolved;
         console.log(chalk.cyan(`将在项目 ${project.name} 中打包分支: ${actualBranchName}`));
 
-        // 发送一条群组提示：开始打包该分支的 APK
-        let statusMsgId = null;
-        try {
-            const status = await client.sendMessage(chatId, {
-                message:
-                    `🚀 已开始打包 APK\n\n` +
-                    `📁 项目: ${project.name}\n` +
-                    `🌿 分支: ${actualBranchName}\n` +
-                    `⏱ 将在后台最多检查 10 次打包结果（约 5 分钟，每 30 秒一次）。`,
-            });
-            statusMsgId = status.id;
-        } catch (e) {
-            console.log(chalk.yellow('发送打包开始提示失败:', e.message));
+        // 如果队列阶段已经发送了“构建任务已创建”消息，则复用其 statusMsgId
+        let statusMsgId = existingStatusMsgId || null;
+
+        // 如果没有传入现有状态消息，则在此创建一条（兼容直接调用的情况）
+        if (!statusMsgId) {
+            try {
+                const status = await client.sendMessage(chatId, {
+                    message:
+                        `🛠️ 构建任务已创建\n\n` +
+                        `📦 项目：${project.name}\n` +
+                        `🌿 分支：${actualBranchName}\n` +
+                        `📊 队列位置：1 / 1\n\n` +
+                        `⏱️ 构建预计耗时：≤ 5 分钟\n` +
+                        `🔄 状态检查：每 30 秒自动轮询`,
+                });
+                statusMsgId = status.id;
+            } catch (e) {
+                console.log(chalk.yellow('发送打包开始提示失败:', e.message));
+            }
         }
 
         // 这里不再预先读取配置，所有与 appDownPath / proxyShareUrlList 相关的信息
@@ -1589,20 +1742,8 @@ function isBranchAllowed(branchName) {
                     }
                 }
 
-                console.log(chalk.cyan(`📥 切换到分支 ${branchName}...`));
-                let checkoutResult = await project.builder.runCommand(`git checkout ${branchName}`);
-
-                // 如果本地不存在该分支，尝试从远程创建
-                if (!checkoutResult.success) {
-                    console.log(chalk.yellow(`⚠ 本地切换失败，尝试从远程 origin/${branchName} 创建分支...`));
-                    const createResult = await project.builder.runCommand(`git checkout -b ${branchName} origin/${branchName}`);
-                    if (!createResult.success) {
-                        throw new Error(`切换分支失败: ${checkoutResult.error || createResult.error}`);
-                    }
-                    checkoutResult = createResult;
-                }
-
-                console.log(chalk.green(`✓ 已切换到 ${branchName}`));
+                // 使用安全切换逻辑（自动清理未解决冲突 & 远程创建）
+                await safeCheckoutBranch(project, branchName);
             } else {
                 console.log(chalk.gray(`当前已在分支 ${branchName}`));
             }
@@ -1687,19 +1828,7 @@ function isBranchAllowed(branchName) {
                         }
                     }
 
-                    // 可选：在 Telegram 中提示 Logo 的 S3 信息
-                    if (logoInfo) {
-                        try {
-                            await client.sendMessage(chatId, {
-                                message:
-                                    `🎨 Logo 已上传到 S3\n\n` +
-                                    `🗂 路径: ${logoInfo.key}\n` +
-                                    `🔗 地址: ${logoInfo.url}`,
-                            });
-                        } catch (e) {
-                            console.log(chalk.yellow('发送 Logo S3 信息失败:', e.message));
-                        }
-                    }
+                    // 不再单独发 Logo 消息，与最终 APK 结果合并为一条
                 }
             } catch (e) {
                 console.log(chalk.yellow('处理 Logo 时发生错误:', e.message));
@@ -1754,9 +1883,13 @@ function isBranchAllowed(branchName) {
 
             const { key, url } = await uploadFileToS3(localApkPath, s3Key, 'application/vnd.android.package-archive');
 
-            // 8. 通知 Telegram：只发 S3 路径和下载链接
+            // 8. 第二条消息：Logo 已上传到 S3 + 地址，与 APK 打包并上传完成合并为一条
             const finalApkNameForLog = appName || apkFileNameFromServer;
+            const logoPart = logoInfo && logoInfo.url
+                ? `🎨 Logo 已上传到 S3\n🔗 地址: ${logoInfo.url}\n\n`
+                : '';
             const msg =
+                logoPart +
                 `✅ APK 打包并上传完成\n\n` +
                 `🌿 分支: ${branchName}\n` +
                 (primaryDomain ? `🌐 主域名: ${primaryDomain}\n` : '') +
@@ -1792,9 +1925,10 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    // 执行构建流程（可复用函数）
-    async function executeBuild(branchName, senderId, chatId) {
+    // 执行构建流程（可复用函数，使用指定 project 的 builder）
+    async function executeBuild(project, branchName, senderId, chatId) {
         shouldCancelBuild = false;
+        const buildRunner = project && project.builder ? project.builder : builder;
 
         const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
 
@@ -1806,7 +1940,7 @@ function isBranchAllowed(branchName) {
             }
         };
 
-        const result = await builder.fullBuild(branchName, updateProgress);
+        const result = await buildRunner.fullBuild(branchName, updateProgress);
 
         if (shouldCancelBuild) {
             log(chalk.yellow('任务已中断'));
@@ -1865,7 +1999,7 @@ function isBranchAllowed(branchName) {
 
         // 开始构建流程（不单独发消息，直接开始）
         try {
-            await executeBuild(nextTask.branchName, nextTask.userId, nextTask.chatId);
+            await executeBuild(nextTask.project, nextTask.branchName, nextTask.userId, nextTask.chatId);
         } catch (error) {
             console.error(chalk.red('队列任务处理失败:'), error);
         }
