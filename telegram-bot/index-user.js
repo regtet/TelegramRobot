@@ -1005,23 +1005,51 @@ function isBranchAllowed(branchName) {
             throw new Error('AWS 凭证未配置');
         }
 
-        console.log(chalk.cyan(`📤 正在上传到 S3: bucket=${S3_BUCKET}, key=${key}`));
+        const maxAttempts = 3;
+        const delayMs = 3000;
+        let lastError = null;
 
-        const fileStream = fs.createReadStream(localFilePath);
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(chalk.cyan(`📤 正在上传到 S3 (尝试 ${attempt}/${maxAttempts}): bucket=${S3_BUCKET}, key=${key}`));
 
-        const command = new PutObjectCommand({
-            Bucket: S3_BUCKET,
-            Key: key,
-            Body: fileStream,
-            ContentType: contentType,
-        });
+            try {
+                const fileStream = fs.createReadStream(localFilePath);
 
-        await s3Client.send(command);
+                const command = new PutObjectCommand({
+                    Bucket: S3_BUCKET,
+                    Key: key,
+                    Body: fileStream,
+                    ContentType: contentType,
+                });
 
-        console.log(chalk.green('✅ 上传到 S3 成功'));
+                await s3Client.send(command);
 
-        const publicUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
-        return { key, url: publicUrl };
+                console.log(chalk.green('✅ 上传到 S3 成功'));
+
+                const publicUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+                return { key, url: publicUrl };
+            } catch (error) {
+                lastError = error;
+                const msg = (error && error.message) || '';
+
+                console.log(chalk.yellow(`⚠ 上传到 S3 失败（第 ${attempt}/${maxAttempts} 次）：${msg}`));
+
+                const retryable =
+                    /Client network socket disconnected before secure TLS connection was established/i.test(msg) ||
+                    /ECONNRESET/i.test(msg) ||
+                    /ETIMEDOUT/i.test(msg) ||
+                    /EAI_AGAIN/i.test(msg);
+
+                if (!retryable || attempt === maxAttempts) {
+                    break;
+                }
+
+                console.log(chalk.yellow(`⏳ ${delayMs / 1000} 秒后重试上传到 S3...`));
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+
+        throw lastError || new Error('上传到 S3 失败（未知错误）');
     }
 
     // 清理本地分支（保留 main）
@@ -1307,15 +1335,30 @@ function isBranchAllowed(branchName) {
 
     // 在多个项目中解析出对应的项目和分支名（先 WG-WEB，再 WGAME-WEB）
     async function resolveProjectAndBranch(branchName) {
+        const trimmedBranch = (branchName || '').trim().replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+        if (!trimmedBranch) return null;
+
         for (const proj of projects) {
             // 清理项目的分支缓存，确保使用远程最新信息
             proj.builder._branchesCache = null;
             try {
-                const { valid } = await proj.builder.validateBranches([branchName]);
+                const { valid } = await proj.builder.validateBranches([trimmedBranch]);
                 if (valid && valid.length > 0) {
                     return {
-                        project: proj,              // { name, builder, path }
-                        actualBranchName: valid[0], // 真实分支名（可能大小写不同）
+                        project: proj,
+                        actualBranchName: valid[0],
+                    };
+                }
+
+                // 当 fetch 失败导致分支列表陈旧时，用 ls-remote 单独查询该分支是否在远端存在
+                const lsResult = await proj.builder.runCommand('git ls-remote origin ' + trimmedBranch);
+                if (lsResult.success && lsResult.output && lsResult.output.includes('refs/heads/')) {
+                    const m = lsResult.output.match(/refs\/heads\/(\S+)/);
+                    const actualName = (m && m[1]) ? m[1].trim() : trimmedBranch;
+                    console.log(chalk.cyan(`✓ [${proj.name}] 通过 ls-remote 确认远端分支存在: ${actualName}`));
+                    return {
+                        project: proj,
+                        actualBranchName: actualName,
                     };
                 }
             } catch (e) {
