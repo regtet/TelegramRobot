@@ -1446,17 +1446,19 @@ function isBranchAllowed(branchName) {
         const messageId = apkPanelMessages.get(key) || null;
         const text = buildApkPanelText(projectName, chatId);
 
-        // 如果当前项目在该群里没有任何任务，暂时不删除旧面板，只是不再更新内容
         try {
+            // 1. 如果有旧面板，先尝试删除（忽略失败）
             if (messageId) {
-                await client.editMessage(chatId, {
-                    message: messageId,
-                    text: text,
-                });
-            } else {
-                const msg = await client.sendMessage(chatId, { message: text });
-                apkPanelMessages.set(key, msg.id);
+                try {
+                    await client.deleteMessages(chatId, [messageId], { revoke: true });
+                } catch (e) {
+                    console.log(chalk.yellow('删除旧 APK 构建面板失败（可忽略）:', e.message));
+                }
             }
+
+            // 2. 发送新的面板消息并记录 messageId
+            const msg = await client.sendMessage(chatId, { message: text });
+            apkPanelMessages.set(key, msg.id);
         } catch (e) {
             console.log(chalk.yellow('更新 APK 构建面板失败:', e.message));
         }
