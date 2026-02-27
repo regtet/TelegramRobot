@@ -107,19 +107,19 @@ const s3Client = new S3Client({
 });
 
 // 打包状态锁
-    // 构建状态管理
-    let isBuilding = false;
-    let currentBuildBranch = '';
-    let buildQueue = []; // 普通打包（zip）排队列表
-    let currentBuildId = null; // 当前构建ID
-    let shouldCancelBuild = false; // 取消标志
+// 构建状态管理
+let isBuilding = false;
+let currentBuildBranch = '';
+let buildQueue = []; // 普通打包（zip）排队列表
+let currentBuildId = null; // 当前构建ID
+let shouldCancelBuild = false; // 取消标志
 
-    // APK 打包队列（按顺序执行，避免多条消息交错）
-    let isApkBuilding = false;
-    let apkBuildQueue = [];
-    let currentApkBuildBranch = '';
-    let currentApkBuildProjectName = '';
-    let currentApkBuildChatId = null;
+// APK 打包队列（按顺序执行，避免多条消息交错）
+let isApkBuilding = false;
+let apkBuildQueue = [];
+let currentApkBuildBranch = '';
+let currentApkBuildProjectName = '';
+let currentApkBuildChatId = null;
 
 // 文件处理队列
 let isProcessingFile = false; // 是否正在处理文件
@@ -637,7 +637,7 @@ function isBranchAllowed(branchName) {
             }
 
             // 如果没有新分支需要处理，直接返回
-            if (newBranches.length === 0) {
+            if (newTargets.length === 0) {
                 console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
                 return;
             }
@@ -2083,16 +2083,75 @@ function isBranchAllowed(branchName) {
             return { cancelled: true };
         }
 
+        // 上传 ZIP 到 Telegram，增加简单重试以应对短暂断线（Not connected / connection closed 等）
+        let uploadSuccess = false;
+        const maxUploadAttempts = 3;
+        const uploadDelayMs = 3000;
+
+        for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
+            try {
+                log(chalk.cyan(`开始上传构建产物到 Telegram（尝试 ${attempt}/${maxUploadAttempts}）`));
+                await client.sendFile(chatId, {
+                    file: result.zipFilePath,
+                    forceDocument: true,
+                });
+                log(chalk.green('上传完成'));
+                uploadSuccess = true;
+                break;
+            } catch (error) {
+                const msg = (error && error.message) || '';
+                log(chalk.red(`上传失败（第 ${attempt}/${maxUploadAttempts} 次）：${msg}`));
+
+                const retryable =
+                    /Not connected/i.test(msg) ||
+                    /connection closed/i.test(msg) ||
+                    /ETIMEDOUT/i.test(msg);
+
+                if (!retryable || attempt === maxUploadAttempts) {
+                    break;
+                }
+
+                log(chalk.yellow(`⏳ ${uploadDelayMs / 1000} 秒后重试上传到 Telegram...`));
+                await new Promise(resolve => setTimeout(resolve, uploadDelayMs));
+            }
+        }
+
+        if (!uploadSuccess) {
+            log(chalk.red('上传多次失败，放弃发送构建产物到 Telegram'));
+        }
+
+        // 构建完成后，模拟“上传压缩包”触发后续检测流程
         try {
-            await client.sendFile(chatId, {
-                file: result.zipFilePath,
-                forceDocument: true,
-            });
-            log(chalk.green('上传完成'));
-        } catch (error) {
-            log(chalk.red('上传失败'), error.message);
+            if (project && chatId && result && (result.zipFileName || result.zipFilePath)) {
+                const fileName =
+                    result.zipFileName ||
+                    (result.zipFilePath ? path.basename(result.zipFilePath) : `${branchName}.zip`);
+
+                const fileTask = {
+                    fileName,
+                    branchName,
+                    actualBranchName: branchName,
+                    project,
+                    chatId,
+                    timestamp: new Date(),
+                };
+
+                if (isProcessingFile || isBuilding) {
+                    fileProcessQueue.push(fileTask);
+                    log(chalk.gray(`📦 自动构建文件加入检测队列: ${fileName} (位置 ${fileProcessQueue.length})`));
+                } else {
+                    log(chalk.cyan(`📦 自动构建文件触发检测: ${fileName}`));
+                    (async () => {
+                        await processFileTask(fileTask);
+                    })();
+                }
+            } else {
+                log(chalk.gray('跳过自动压缩包检测：缺少 project/chatId 或 zip 信息'));
+            }
+        } catch (e) {
+            log(chalk.yellow('自动触发压缩包检测失败（可忽略）:'), e.message);
         } finally {
-            if (fs.existsSync(result.zipFilePath)) {
+            if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
                 fs.unlinkSync(result.zipFilePath);
                 log('已清理临时文件');
             }
@@ -2104,6 +2163,17 @@ function isBranchAllowed(branchName) {
     // 处理队列中的下一个任务
     async function processNextInQueue() {
         if (buildQueue.length === 0) {
+            // 👉 如果没有待构建任务了，但有待检测的文件，并且当前没在处理文件，
+            //    这里可以顺带启动一下文件检测队列
+            if (!isProcessingFile && fileProcessQueue.length > 0) {
+                const nextFileTask = fileProcessQueue.shift();
+                console.log(
+                    chalk.cyan(`\n📦 处理队列中的文件: ${nextFileTask.fileName} (剩余 ${fileProcessQueue.length}个)`)
+                );
+                setTimeout(() => {
+                    processFileTask(nextFileTask);
+                }, 1000);
+            }
             return;
         }
 
@@ -2122,11 +2192,23 @@ function isBranchAllowed(branchName) {
             console.error(chalk.red('队列任务处理失败:'), error);
         }
 
-        // 重置状态并处理下一个
+        // 重置状态
         isBuilding = false;
         currentBuildBranch = '';
         currentBuildId = null;
 
+        // 👉 构建刚结束时，如果有待检测文件且当前没在处理文件，也可以启动文件队列
+        if (!isProcessingFile && fileProcessQueue.length > 0) {
+            const nextFileTask = fileProcessQueue.shift();
+            console.log(
+                chalk.cyan(`\n📦 处理队列中的文件: ${nextFileTask.fileName} (剩余 ${fileProcessQueue.length}个)`)
+            );
+            setTimeout(() => {
+                processFileTask(nextFileTask);
+            }, 1000);
+        }
+
+        // 继续处理下一个构建任务
         setTimeout(() => {
             processNextInQueue();
         }, 2000);
