@@ -1005,7 +1005,7 @@ function isBranchAllowed(branchName) {
             throw new Error('AWS 凭证未配置');
         }
 
-        const maxAttempts = 3;
+        const maxAttempts = 6;
         const delayMs = 3000;
         let lastError = null;
 
@@ -1022,7 +1022,17 @@ function isBranchAllowed(branchName) {
                     ContentType: contentType,
                 });
 
-                await s3Client.send(command);
+                // 为每次上传设置 60 秒超时，超时则主动中止本次请求并记为一次失败
+                const abortController = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    abortController.abort();
+                }, 60000);
+
+                try {
+                    await s3Client.send(command, { abortSignal: abortController.signal });
+                } finally {
+                    clearTimeout(timeoutId);
+                }
 
                 console.log(chalk.green('✅ 上传到 S3 成功'));
 
@@ -1620,13 +1630,6 @@ function isBranchAllowed(branchName) {
             await triggerApkBuildForBranch(task.branchName, task.chatId, null);
         } catch (error) {
             console.error(chalk.red('APK 队列任务失败:'), error);
-            try {
-                await client.sendMessage(task.chatId, {
-                    message: `❌ 打包 APK 失败：${error.message}`,
-                });
-            } catch (e) {
-                console.log(chalk.yellow('发送失败提示失败:', e.message));
-            }
         } finally {
             isApkBuilding = false;
             currentApkBuildBranch = '';
@@ -1719,13 +1722,14 @@ function isBranchAllowed(branchName) {
     }
 
     // 带重试的文件下载（用于从打包服务器下载 APK）
-    async function downloadFileWithRetry(url, localPath, maxAttempts = 3, timeoutMs = 600000) {
+    async function downloadFileWithRetry(url, localPath, maxAttempts = 6, timeoutMs = 60000) {
         const retryDelayMs = 5000;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             console.log(chalk.cyan(`📥 第 ${attempt}/${maxAttempts} 次尝试下载 APK: ${url}`));
 
             try {
+                // 每次下载尝试设置 60 秒超时，超时会主动中止请求并记为一次失败
                 const response = await axios.get(url, { responseType: 'stream', timeout: timeoutMs });
 
                 await new Promise((resolve, reject) => {
@@ -1759,7 +1763,7 @@ function isBranchAllowed(branchName) {
     }
 
     // 轮询外部接口，等待对应 APK 打包完成
-    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 30000, chatId, statusMsgId, branchName) {
+    async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 60000, chatId, statusMsgId, branchName) {
         const slugForPack = (appNameSlug || '').toLowerCase();
         const targetName = `app-${slugForPack}.apk`;
         const unsignedPattern = new RegExp(`^unsigned_${slugForPack}_.+_modified\\.apk$`, 'i');
@@ -1785,19 +1789,21 @@ function isBranchAllowed(branchName) {
             }
 
             let files = [];
-            try {
-                const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000 });
-                files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
-            } catch (error) {
-                const msg = (error && error.message) || '';
-                if (error && (error.code === 'ECONNRESET' || /socket hang up/i.test(msg))) {
-                    console.log(chalk.yellow(`⚠ 访问 /list 出现 socket hang up（第 ${attempt}/${maxAttempts} 次），继续重试...`));
-                } else {
-                    console.log(chalk.yellow(`⚠ 访问 /list 失败（第 ${attempt}/${maxAttempts} 次）：${msg}`));
+            // 访问 /list：如果网络请求失败则在当前 attempt 内一直重试，直到成功为止
+            // 只有成功拿到列表并检查完结果后，才算“完成一次检查”（共 maxAttempts 次）
+            // 这样可以保证“总共 10 次有效检查”，而网络层错误会自动保底重试
+            while (true) {
+                try {
+                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000 });
+                    files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
+                    break;
+                } catch (error) {
+                    const msg = (error && error.message) || '';
+                    console.log(chalk.yellow(`⚠ 访问 /list 失败（第 ${attempt}/${maxAttempts} 次）：${msg}，将继续重试...`));
+                    // 保持在当前 attempt，不增加次数，只是等待一段时间后再试一次
+                    await new Promise(r => setTimeout(r, intervalMs));
+                    continue;
                 }
-                // 不中断轮询，稍后重试
-                await new Promise(r => setTimeout(r, intervalMs));
-                continue;
             }
 
             // 优先匹配正式签名的 app-{slug}.apk，且 modified 时间不早于本次打包触发时间
@@ -1962,7 +1968,7 @@ function isBranchAllowed(branchName) {
             const webUrl = `${webUrlDomain}?isapk=1`;
 
             if (!logoInfo || !logoInfo.url) {
-                throw new Error('Logo 未成功上传到 S3，无法获取 image_url');
+                throw new Error(`Logo 未成功上传到 S3（分支: ${branchName}），无法获取 image_url`);
             }
 
             const imageUrl = logoInfo.url;
@@ -1987,7 +1993,8 @@ function isBranchAllowed(branchName) {
             const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
             console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
 
-            await downloadFileWithRetry(downloadUrl, localApkPath, 3, 600000);
+            // 下载 APK：最多 6 次重试，每次下载单次最长 60 秒
+            await downloadFileWithRetry(downloadUrl, localApkPath, 6, 60000);
 
             // 7. 上传 APK 到 S3（不上传到 Telegram）
             // 为了与 appDownPath 完全一致，这里优先使用当前分支配置中的 appName 作为 S3 Key
@@ -2021,6 +2028,27 @@ function isBranchAllowed(branchName) {
             } catch (e) {
                 console.log(chalk.yellow('发送 APK 结果消息失败:', e.message));
             }
+        } catch (error) {
+            // 统一处理 APK 打包流程中的异常，并在群里提示失败原因
+            console.error(chalk.red(`打包 APK 失败: [${project.name}] ${branchName}`), error);
+
+            const safeProjectName = project && project.name ? project.name : '未知项目';
+            const errorMsg = (error && error.message) || String(error);
+
+            const failMsg =
+                `❌ APK 打包失败\n\n` +
+                `📁 项目: ${safeProjectName}\n` +
+                `🌿 分支: ${branchName}\n` +
+                `📝 错误信息: ${errorMsg}`;
+
+            try {
+                await client.sendMessage(chatId, { message: failMsg });
+            } catch (e) {
+                console.log(chalk.yellow('发送 APK 失败结果消息失败:', e.message));
+            }
+
+            // 继续抛出，方便上层逻辑知晓失败（但不再额外发送提示）
+            throw error;
         } finally {
             // 清理本地 APK 临时文件
             try {
