@@ -1561,7 +1561,7 @@ function isBranchAllowed(branchName) {
             try {
                 await client.sendMessage(chatId, {
                     message:
-                        `⚠️ 分支已在打包中\n\n` +
+                        `⚠️ APK 正在打包中，无需重复打包\n\n` +
                         `📦 项目：${displayProject}\n` +
                         `🌿 分支：${displayBranch}`,
                 });
