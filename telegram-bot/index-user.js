@@ -1044,7 +1044,12 @@ function isBranchAllowed(branchName) {
 
                 console.log(chalk.yellow(`⚠ 上传到 S3 失败（第 ${attempt}/${maxAttempts} 次）：${msg}`));
 
+                const isAbortError =
+                    (error && error.name === 'AbortError') ||
+                    /Request aborted/i.test(msg);
+
                 const retryable =
+                    isAbortError ||
                     /Client network socket disconnected before secure TLS connection was established/i.test(msg) ||
                     /ECONNRESET/i.test(msg) ||
                     /ETIMEDOUT/i.test(msg) ||
