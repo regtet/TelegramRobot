@@ -1318,55 +1318,62 @@ function isBranchAllowed(branchName) {
             }
 
             // 汇总结果并发送消息
-            let msg = `🔍 检测完成\n\n`;
+            const total = results.length;
+            let msg = '';
 
-            for (const result of results) {
+            msg += '==================================================\n';
+            msg += `🔍 批量检测完成（共 ${total} 个项目）\n`;
+            msg += '==================================================\n\n\n';
+
+            results.forEach((result, index) => {
+                const idx = index + 1;
+                msg += `【 ${idx} / ${total} 】━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
                 if (result.success) {
                     msg += `📁 项目        : ${result.projectName}\n`;
                     msg += `🌿 分支        : ${result.branchName}\n`;
                     msg += `📋 Package ID  : ${result.packageId}\n`;
                     msg += `📱 App 名称     : ${result.appName}\n`;
-                    msg += `🎮 游服类型     : ${result.debugText} (${result.debugValue})\n`;
+                    msg += `🎮 游服类型     : ${result.debugText} (${result.debugValue})\n\n`;
 
                     const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
                     const backupDomains = Array.isArray(result.backupDomains) ? result.backupDomains : [];
 
                     if (mainDomains.length > 0 || backupDomains.length > 0) {
-                        msg += `\n🌐 域名反解析结果\n`;
-                        msg += `────────────────────────\n\n`;
+                        msg += `🌐 域名反解析结果\n`;
+                        msg += `────────────────────────\n`;
 
                         if (mainDomains.length > 0) {
-                            msg += `🔹 主域名\n`;
+                            msg += `\n🔹 主域名\n`;
                             mainDomains.forEach(d => {
                                 msg += `   • ${d}\n`;
                             });
-                            if (backupDomains.length > 0) {
-                                msg += `\n`;
-                            }
                         }
 
                         if (backupDomains.length > 0) {
-                            msg += `🔸 备用域名\n`;
+                            msg += `\n\n🔸 备用域名\n`;
                             backupDomains.forEach(b => {
                                 const suffix = b && b.hidePhone ? '（隐藏手机号）' : '';
                                 msg += `   • ${b.domain}${suffix}\n`;
                             });
                         }
-
-                        msg += `\n`;
-                    } else {
-                        msg += `\n`;
                     }
                 } else {
                     msg += `📁 项目        : ${result.projectName}\n`;
                     msg += `🌿 分支        : ${result.branchName}\n`;
-                    msg += `❌ ${result.error}\n\n`;
+                    msg += `❌ ${result.error}\n`;
                 }
-            }
+
+                msg += '\n\n';
+            });
 
             if (invalidInfos.length > 0) {
-                msg += `⚠ 以下分支在两个仓库中都未找到:\n${invalidInfos.join(', ')}\n`;
+                msg += `⚠ 以下分支在两个仓库中都未找到:\n${invalidInfos.join(', ')}\n\n`;
             }
+
+            msg += '==================================================\n';
+            msg += '✅ 所有项目检测完成\n';
+            msg += '==================================================';
 
             try {
                 await client.sendMessage(chatId, { message: msg });
