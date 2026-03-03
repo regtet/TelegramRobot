@@ -373,13 +373,13 @@ function isBranchAllowed(branchName) {
 
             // 文本命令：打包APK 分支名（例如：打包APK wg-burgguer）
             if (trimmedText.startsWith('打包APK')) {
-                const branchNameForApk = trimmedText.substring('打包APK'.length).trim();
+                const branchTextForApk = trimmedText.substring('打包APK'.length).trim();
 
-                if (!branchNameForApk) {
+                if (!branchTextForApk) {
                     console.log(chalk.yellow('打包APK 命令缺少分支名'));
                     try {
                         await client.sendMessage(message.chatId, {
-                            message: '❌ 打包APK 命令缺少分支名\n\n用法: 打包APK wg-burgguer',
+                            message: '❌ 打包APK 命令缺少分支名\n\n用法: 打包APK wg-burgguer 或 打包APK a b c',
                         });
                     } catch (error) {
                         console.log(chalk.yellow('发送消息失败:', error.message));
@@ -387,8 +387,31 @@ function isBranchAllowed(branchName) {
                     return;
                 }
 
-                console.log(chalk.cyan(`收到打包APK 命令，分支: ${branchNameForApk}`));
-                await enqueueApkBuild(branchNameForApk, message.chatId);
+                // 按空格或换行符分割多个分支，并清理不可见字符
+                const apkBranchNames = branchTextForApk
+                    .split(/[\s\n\r]+/)
+                    .filter(b => b.length > 0)
+                    .map(b => b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim())
+                    .filter(b => b.length > 0);
+
+                if (apkBranchNames.length === 0) {
+                    console.log(chalk.yellow('打包APK 命令未解析到有效分支名'));
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: '❌ 打包APK 命令未解析到有效分支名',
+                        });
+                    } catch (error) {
+                        console.log(chalk.yellow('发送消息失败:', error.message));
+                    }
+                    return;
+                }
+
+                console.log(chalk.cyan(`收到打包APK 命令，分支: ${apkBranchNames.join(', ')}`));
+
+                // 逐个分支加入 APK 队列（由队列串行处理）
+                for (const name of apkBranchNames) {
+                    await enqueueApkBuild(name, message.chatId);
+                }
                 return;
             }
 
@@ -891,14 +914,41 @@ function isBranchAllowed(branchName) {
                     // App 名称（来自 appDownPath 最后一段）
                     const appName = result.appName || '未检测到';
 
-                    const msg =
-                        `🔍 正在分析压缩包…\n` +
-                        `📦 文件识别完成：${fileName}\n` +
-                        `🌿 分支匹配成功：${actualBranchName}\n` +
-                        `🧠 云端代码库扫描中…\n` +
-                        `🆔 已自动检测到云端 Package ID：${result.packageId}\n` +
-                        `📱 App 名称：${appName}\n` +
-                        `${debugEmoji} 游服类型：${debugText} (${debugValue})`;
+                    // 域名反解析结果（主域名 / 备用域名）
+                    const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
+                    const backupDomains = Array.isArray(result.backupDomains) ? result.backupDomains : [];
+
+                    let msg =
+                        `🔍 正在分析压缩包…\n\n` +
+                        `📦 文件名        : ${fileName}\n` +
+                        `📁 项目          : ${project.name}\n` +
+                        `🌿 分支          : ${actualBranchName}\n` +
+                        `📋 Package ID    : ${result.packageId}\n` +
+                        `📱 App 名称      : ${appName}\n` +
+                        `🎮 游服类型      : ${debugText} (${debugValue})`;
+
+                    if (mainDomains.length > 0 || backupDomains.length > 0) {
+                        msg += `\n\n🌐 域名反解析结果\n`;
+                        msg += `────────────────────────\n\n`;
+
+                        if (mainDomains.length > 0) {
+                            msg += `🔹 主域名\n`;
+                            mainDomains.forEach(d => {
+                                msg += `   • ${d}\n`;
+                            });
+                            if (backupDomains.length > 0) {
+                                msg += `\n`;
+                            }
+                        }
+
+                        if (backupDomains.length > 0) {
+                            msg += `🔸 备用域名\n`;
+                            backupDomains.forEach(b => {
+                                const suffix = b && b.hidePhone ? '（隐藏手机号）' : '';
+                                msg += `   • ${b.domain}${suffix}\n`;
+                            });
+                        }
+                    }
 
                     console.log(
                         chalk.green(
@@ -923,13 +973,8 @@ function isBranchAllowed(branchName) {
                     } catch (error) {
                         try {
                             await client.sendMessage(chatId, {
-                                message:
-                                    `🔍 正在分析压缩包…\n` +
-                                    `🌿 分支匹配成功： ${actualBranchName}\n` +
-                                    `📋 已自动检测到云端Package ID: ${result.packageId}\n` +
-                                    `📱 App 名称：${appName}\n` +
-                                    `${debugEmoji} 游服类型：${debugText} (${debugValue})\n\n` +
-                                    `✅ 已自动加入打包队列，将开始打包 APK。`,
+                                // Markdown 发送失败时，退回普通文本，但内容保持完全一致（包含域名反解析结果）
+                                message: msg + `\n\n✅ 已自动加入打包队列，将开始打包 APK。`,
                             });
                         } catch (err) {
                             console.log(chalk.yellow('发送消息失败:', err.message));
@@ -1005,7 +1050,7 @@ function isBranchAllowed(branchName) {
             throw new Error('AWS 凭证未配置');
         }
 
-        const maxAttempts = 6;
+        const maxAttempts = 10;
         const delayMs = 3000;
         let lastError = null;
 
@@ -1235,6 +1280,8 @@ function isBranchAllowed(branchName) {
                             debugText,
                             debugEmoji,
                             debugValue,
+                            mainDomains: Array.isArray(result.mainDomains) ? result.mainDomains : [],
+                            backupDomains: Array.isArray(result.backupDomains) ? result.backupDomains : [],
                             success: true
                         });
 
@@ -1275,14 +1322,44 @@ function isBranchAllowed(branchName) {
 
             for (const result of results) {
                 if (result.success) {
-                    msg += `📁 项目: ${result.projectName}\n`;
-                    msg += `🌿 分支: ${result.branchName}\n`;
-                    msg += `📋 Package ID: ${result.packageId}\n`;
-                    msg += `📱 App 名称: ${result.appName}\n`;
-                    msg += `${result.debugEmoji} 游服类型: ${result.debugText} (${result.debugValue})\n\n`;
+                    msg += `📁 项目        : ${result.projectName}\n`;
+                    msg += `🌿 分支        : ${result.branchName}\n`;
+                    msg += `📋 Package ID  : ${result.packageId}\n`;
+                    msg += `📱 App 名称     : ${result.appName}\n`;
+                    msg += `🎮 游服类型     : ${result.debugText} (${result.debugValue})\n`;
+
+                    const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
+                    const backupDomains = Array.isArray(result.backupDomains) ? result.backupDomains : [];
+
+                    if (mainDomains.length > 0 || backupDomains.length > 0) {
+                        msg += `\n🌐 域名反解析结果\n`;
+                        msg += `────────────────────────\n\n`;
+
+                        if (mainDomains.length > 0) {
+                            msg += `🔹 主域名\n`;
+                            mainDomains.forEach(d => {
+                                msg += `   • ${d}\n`;
+                            });
+                            if (backupDomains.length > 0) {
+                                msg += `\n`;
+                            }
+                        }
+
+                        if (backupDomains.length > 0) {
+                            msg += `🔸 备用域名\n`;
+                            backupDomains.forEach(b => {
+                                const suffix = b && b.hidePhone ? '（隐藏手机号）' : '';
+                                msg += `   • ${b.domain}${suffix}\n`;
+                            });
+                        }
+
+                        msg += `\n`;
+                    } else {
+                        msg += `\n`;
+                    }
                 } else {
-                    msg += `📁 项目: ${result.projectName}\n`;
-                    msg += `🌿 分支: ${result.branchName}\n`;
+                    msg += `📁 项目        : ${result.projectName}\n`;
+                    msg += `🌿 分支        : ${result.branchName}\n`;
                     msg += `❌ ${result.error}\n\n`;
                 }
             }
@@ -1799,7 +1876,7 @@ function isBranchAllowed(branchName) {
             // 这样可以保证“总共 10 次有效检查”，而网络层错误会自动保底重试
             while (true) {
                 try {
-                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000 });
+                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000  });
                     files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
                     break;
                 } catch (error) {
@@ -1972,11 +2049,11 @@ function isBranchAllowed(branchName) {
             const webUrlDomain = primaryDomain.replace(/\/+$/, '');
             const webUrl = `${webUrlDomain}?isapk=1`;
 
-            if (!logoInfo || !logoInfo.url) {
-                throw new Error(`Logo 未成功上传到 S3（分支: ${branchName}），无法获取 image_url`);
+            // 如果 Logo 上传最终失败，不再终止整个 APK 流程，而是继续使用空 image_url 调用打包接口
+            let imageUrl = (logoInfo && logoInfo.url) ? logoInfo.url : '';
+            if (!imageUrl) {
+                console.log(chalk.yellow(`⚠ Logo 未成功上传到 S3（分支: ${branchName}），将使用空 image_url 调用打包接口`));
             }
-
-            const imageUrl = logoInfo.url;
 
             // 记录打包触发时间（UTC 毫秒），用于过滤旧包
             const triggerTimeMs = Date.now();

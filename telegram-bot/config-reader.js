@@ -54,6 +54,7 @@ function extractBranchNameFromFileName(fileName) {
  * - debug
  * - appDownPath 的 app 文件名及中间的 slug
  * - proxyShareUrlList 第一个域名（用于生成 web_url）
+ * - 反解析出来的主域名 / 备用域名列表（与 0.html 工具生成规则相反向）
  * @param {string} projectPath - 项目路径
  * @param {string} branchName - 分支名
  * @returns {Promise<{
@@ -63,6 +64,8 @@ function extractBranchNameFromFileName(fileName) {
  *   appName?: string,
  *   appNameSlug?: string,
  *   primaryDomain?: string,
+ *   mainDomains?: string[],
+ *   backupDomains?: { domain: string, hidePhone: boolean }[],
  *   error?: string
  * }>}
  */
@@ -86,6 +89,8 @@ async function readPackageIdFromBranch(projectPath, branchName) {
         let appName = null;
         let appNameSlug = null;
         let primaryDomain = null;
+        let mainDomains = [];
+        let backupDomains = [];
 
         // 尝试解析 packageId
         const packageIdPatterns = [
@@ -150,10 +155,66 @@ async function readPackageIdFromBranch(projectPath, branchName) {
             }
         }
 
-        // 尝试解析 proxyShareUrlList 的第一个域名
-        const proxyListMatch = fileContent.match(/proxyShareUrlList\s*:\s*\[\s*['"]([^'"]+)['"]/);
-        if (proxyListMatch && proxyListMatch[1]) {
-            primaryDomain = proxyListMatch[1]; // 例如 https://777natacao-777.com
+        // 尝试解析 proxyShareUrlList（主域名列表）
+        const proxySectionMatch = fileContent.match(/proxyShareUrlList\s*:\s*\[([\s\S]*?)\]/);
+        if (proxySectionMatch && proxySectionMatch[1]) {
+            const section = proxySectionMatch[1];
+            const urlRegex = /['"]https?:\/\/([^'"]+)['"]/g;
+            const domainSet = new Set();
+            let m;
+
+            while ((m = urlRegex.exec(section)) !== null) {
+                const host = (m[1] || '').trim();
+                if (!host) continue;
+                const base = host.replace(/^www\./i, '');
+                domainSet.add(base);
+            }
+
+            mainDomains = Array.from(domainSet);
+
+            // primaryDomain 保持旧逻辑：取列表中的第一个完整 URL
+            const firstUrlMatch = section.match(/['"]([^'"]+)['"]/);
+            if (firstUrlMatch && firstUrlMatch[1]) {
+                primaryDomain = firstUrlMatch[1];
+            }
+        }
+
+        // 尝试解析 independentUrlList（备用域名列表，phone=true 显示手机号）
+        const indepSectionMatch = fileContent.match(/independentUrlList\s*:\s*\[([\s\S]*?)\]/);
+        if (indepSectionMatch && indepSectionMatch[1]) {
+            const section = indepSectionMatch[1];
+            const objRegex = /\{[^}]*\}/g;
+            const map = new Map(); // domain(去掉www) -> { domain, phone }
+            let m;
+
+            while ((m = objRegex.exec(section)) !== null) {
+                const objText = m[0];
+                const urlMatch = objText.match(/url\s*:\s*['"]([^'"]+)['"]/);
+                const phoneMatch = objText.match(/phone\s*:\s*(true|false)/i);
+                if (!urlMatch || !phoneMatch) continue;
+
+                const fullUrl = urlMatch[1];
+                const hostMatch = fullUrl.match(/^https?:\/\/([^\/'"]+)/i);
+                if (!hostMatch || !hostMatch[1]) continue;
+                const host = hostMatch[1].trim();
+                if (!host) continue;
+
+                const domainKey = host.replace(/^www\./i, '');
+                const phone = phoneMatch[1].toLowerCase() === 'true';
+
+                if (map.has(domainKey)) {
+                    const existing = map.get(domainKey);
+                    // 只要有一个为 false，则视为整体 phone=false（隐藏手机号优先）
+                    map.set(domainKey, { domain: domainKey, phone: existing.phone && phone });
+                } else {
+                    map.set(domainKey, { domain: domainKey, phone });
+                }
+            }
+
+            backupDomains = Array.from(map.values()).map(item => ({
+                domain: item.domain,
+                hidePhone: !item.phone
+            }));
         }
 
         // 如果至少找到了 packageId，就返回成功
@@ -164,7 +225,9 @@ async function readPackageIdFromBranch(projectPath, branchName) {
                 debug: debug !== null ? debug : undefined,
                 appName: appName || undefined,
                 appNameSlug: appNameSlug || undefined,
-                primaryDomain: primaryDomain || undefined
+                primaryDomain: primaryDomain || undefined,
+                mainDomains: mainDomains.length > 0 ? mainDomains : undefined,
+                backupDomains: backupDomains.length > 0 ? backupDomains : undefined
             };
         }
 
