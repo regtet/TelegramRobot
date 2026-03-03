@@ -1722,14 +1722,14 @@ function isBranchAllowed(branchName) {
     }
 
     // 带重试的文件下载（用于从打包服务器下载 APK）
-    async function downloadFileWithRetry(url, localPath, maxAttempts = 6, timeoutMs = 60000) {
+    async function downloadFileWithRetry(url, localPath, maxAttempts = 12, timeoutMs = 15000) {
         const retryDelayMs = 5000;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             console.log(chalk.cyan(`📥 第 ${attempt}/${maxAttempts} 次尝试下载 APK: ${url}`));
 
             try {
-                // 每次下载尝试设置 60 秒超时，超时会主动中止请求并记为一次失败
+                // 每次下载尝试设置 15 秒超时，超时会主动中止请求并记为一次失败
                 const response = await axios.get(url, { responseType: 'stream', timeout: timeoutMs });
 
                 await new Promise((resolve, reject) => {
@@ -1993,8 +1993,8 @@ function isBranchAllowed(branchName) {
             const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
             console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
 
-            // 下载 APK：最多 6 次重试，每次下载单次最长 60 秒
-            await downloadFileWithRetry(downloadUrl, localApkPath, 6, 60000);
+            // 下载 APK：最多 12 次重试，每次下载单次最长 15 秒
+            await downloadFileWithRetry(downloadUrl, localApkPath, 12, 15000);
 
             // 7. 上传 APK 到 S3（不上传到 Telegram）
             // 为了与 appDownPath 完全一致，这里优先使用当前分支配置中的 appName 作为 S3 Key
