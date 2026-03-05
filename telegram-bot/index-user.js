@@ -1093,8 +1093,13 @@ function isBranchAllowed(branchName) {
                     (error && error.name === 'AbortError') ||
                     /Request aborted/i.test(msg);
 
+                const isAwsRequestTimeout =
+                    (error && (error.Code === 'RequestTimeout' || error.name === 'RequestTimeout')) ||
+                    /Your socket connection to the server was not read from or written to within the timeout period\. Idle connections will be closed\./i.test(msg);
+
                 const retryable =
                     isAbortError ||
+                    isAwsRequestTimeout ||
                     /Client network socket disconnected before secure TLS connection was established/i.test(msg) ||
                     /ECONNRESET/i.test(msg) ||
                     /ETIMEDOUT/i.test(msg) ||
@@ -1479,12 +1484,15 @@ function isBranchAllowed(branchName) {
 
         const errorMsg = checkoutResult.error || '';
 
-        // 情况 1：存在未解决的合并/索引冲突，自动强制清理后重试
+        // 情况 1：存在未解决的合并/索引冲突，或者当前分支有本地改动会被覆盖
+        //         这两种情况都自动强制清理后重试，避免流程中断
         const needClean =
             /you need to resolve your current index first/i.test(errorMsg) ||
             /You have unmerged paths/i.test(errorMsg) ||
             /merge is in progress/i.test(errorMsg) ||
-            /rebase in progress/i.test(errorMsg);
+            /rebase in progress/i.test(errorMsg) ||
+            /Your local changes to the following files would be overwritten by checkout/i.test(errorMsg) ||
+            /Please commit your changes or stash them before you switch branches/i.test(errorMsg);
 
         if (needClean) {
             console.log(chalk.yellow(`⚠ [${project.name}] 检测到未解决的合并/索引冲突，自动清理工作区后重试切换分支 ${branchName}...`));
@@ -1883,7 +1891,7 @@ function isBranchAllowed(branchName) {
             // 这样可以保证“总共 10 次有效检查”，而网络层错误会自动保底重试
             while (true) {
                 try {
-                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000  });
+                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000 });
                     files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
                     break;
                 } catch (error) {
