@@ -964,23 +964,22 @@ function isBranchAllowed(branchName) {
                         primaryDomain: result.primaryDomain,
                     });
 
-                    // 发送检测结果，并直接加入 APK 打包队列（自动触发打包流程）
+                    // 发送检测结果（不再自动加入 APK 打包队列）
                     try {
                         await client.sendMessage(chatId, {
-                            message: msg + `\n\n✅ 已自动加入打包队列，将开始打包 APK。`,
+                            message: msg,
                             parseMode: 'Markdown',
                         });
                     } catch (error) {
                         try {
                             await client.sendMessage(chatId, {
                                 // Markdown 发送失败时，退回普通文本，但内容保持完全一致（包含域名反解析结果）
-                                message: msg + `\n\n✅ 已自动加入打包队列，将开始打包 APK。`,
+                                message: msg,
                             });
                         } catch (err) {
                             console.log(chalk.yellow('发送消息失败:', err.message));
                         }
                     }
-                    await enqueueApkBuild(actualBranchName, chatId);
                 } else {
                     const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${actualBranchName}\n🧠 云端代码库扫描中…\n❌ 未检测到 packageId 配置`;
                     console.log(chalk.red(`❌ 分支 ${actualBranchName} 当前分支 未检测到packageId配置`));
