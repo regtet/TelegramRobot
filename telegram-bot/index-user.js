@@ -1096,9 +1096,14 @@ function isBranchAllowed(branchName) {
                     (error && (error.Code === 'RequestTimeout' || error.name === 'RequestTimeout')) ||
                     /Your socket connection to the server was not read from or written to within the timeout period\. Idle connections will be closed\./i.test(msg);
 
+                const isInvalidHeaderValue =
+                    (error && error.code === 'ERR_HTTP_INVALID_HEADER_VALUE') ||
+                    /Invalid value "undefined" for header "x-amz-decoded-content-length"/i.test(msg);
+
                 const retryable =
                     isAbortError ||
                     isAwsRequestTimeout ||
+                    isInvalidHeaderValue ||
                     /Client network socket disconnected before secure TLS connection was established/i.test(msg) ||
                     /ECONNRESET/i.test(msg) ||
                     /ETIMEDOUT/i.test(msg) ||
@@ -2345,5 +2350,14 @@ process.on('SIGINT', async () => {
     console.log(chalk.yellow('\n正在断开连接...'));
     await client.disconnect();
     process.exit(0);
+});
+
+// 全局错误兜底：避免单次任务异常导致整个服务退出
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(chalk.red('未处理的 Promise 拒绝:'), reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error(chalk.red('未捕获的异常:'), err);
 });
 
