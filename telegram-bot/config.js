@@ -4,8 +4,8 @@ module.exports = {
   // Telegram Bot Token
   botToken: process.env.BOT_TOKEN,
 
-  // Telegram 群组 ID
-  chatId: process.env.CHAT_ID,
+  // Telegram 机器人专用群组 ID（不要和 Userbot 共用）
+  chatId: process.env.BOT_CHAT_ID || process.env.CHAT_ID,
 
   // WG-WEB 项目路径
   buildProjectPath: process.env.BUILD_PROJECT_PATH || '../WG-WEB',
