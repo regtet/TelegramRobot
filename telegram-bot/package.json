@@ -1,21 +1,21 @@
 {
-  "name": "wg-web-telegram-builder",
-  "version": "1.0.0",
-  "description": "Telegram Bot for WG-WEB automatic building",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index-user.js",
-    "start:bot": "node index.js",
-    "dev": "nodemon index-user.js"
-  },
-  "keywords": [
-    "telegram",
-    "bot",
-    "build",
-    "automation"
-  ],
-  "author": "",
-  "license": "MIT",
+    "name": "wg-web-telegram-builder",
+    "version": "1.0.0",
+    "description": "Telegram Bot for WG-WEB automatic building",
+    "main": "index.js",
+    "scripts": {
+        "dev:user": "nodemon index-user.js",
+        "dev:bot": "nodemon index.js",
+        "dev": "concurrently \"yarn dev:user\" \"yarn dev:bot\""
+    },
+    "keywords": [
+        "telegram",
+        "bot",
+        "build",
+        "automation"
+    ],
+    "author": "",
+    "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
     "archiver": "^6.0.1",
@@ -23,10 +23,13 @@
     "chalk": "^4.1.2",
     "dotenv": "^16.3.1",
     "input": "^1.0.1",
+    "node-telegram-bot-api": "^0.66.0",
     "sharp": "^0.34.5",
+    "socks-proxy-agent": "^8.0.4",
     "telegram": "^2.22.2"
   },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  }
+    "devDependencies": {
+        "concurrently": "^9.2.1",
+        "nodemon": "^3.0.1"
+    }
 }

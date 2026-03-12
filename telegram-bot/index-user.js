@@ -188,16 +188,16 @@ function isBranchAllowed(branchName) {
             const senderId = message.senderId.toString();
             const chatIdStr = message.chatId.toString();
 
-            // 打印消息信息
-            console.log(chalk.gray('收到消息:'));
+            // 如果配置了 CHAT_ID，只处理并打印该群组的消息，其它群一律忽略
+            if (chatId && chatIdStr !== chatId.toString()) {
+                return;
+            }
+
+            // 只打印目标群组的消息
+            console.log(chalk.gray('收到目标群消息:'));
             console.log(chalk.gray('  发送者ID:'), senderId);
             console.log(chalk.gray('  群组ID:'), chatIdStr);
             console.log(chalk.gray('  消息:'), text);
-
-            // 如果配置了 CHAT_ID，只处理该群组的消息
-            if (chatId && message.chatId.toString() !== chatId.toString()) {
-                return;
-            }
 
             // 收到目标群消息时，按需自动打开 LX Music
             if (ENABLE_LX_MUSIC_ON_MESSAGE) {
