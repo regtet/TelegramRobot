@@ -36,6 +36,60 @@ const bot = new TelegramBot(config.botToken, botOptions);
 const pendingDecisions = new Map();
 const APK_DECISION_TIMEOUT_MS = 30000;
 
+// /apk_start_all 批次统计：收到所有分支的成功/失败后发汇总
+let apkBatch = null; // { chatId, branches: string[], startTime, outcomes: Map<branch, 'success'|'failure'>, timeoutId }
+const BATCH_SUMMARY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 小时后发未完成汇总
+
+// 从「APK 打包成功/失败」消息中提取分支名
+function extractBranchFromApkMessage(text) {
+  const m = (text || '').match(/🌿\s*分支:\s*([^\s\n]+)/);
+  return m && m[1] ? m[1].trim() : null;
+}
+
+// 若当前批次已收齐所有结果，发送统计并清空批次
+function trySendBatchSummary() {
+  if (!apkBatch || apkBatch.outcomes.size < apkBatch.branches.length) return;
+  const successList = [];
+  const failureList = [];
+  for (const b of apkBatch.branches) {
+    const o = apkBatch.outcomes.get(b);
+    if (o === 'success') successList.push(b);
+    else if (o === 'failure') failureList.push(b);
+  }
+  const successCount = successList.length;
+  const failureCount = failureList.length;
+  let msg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
+  if (successList.length) msg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  msg += `\n\n❌ 失败 ${failureCount} 条`;
+  if (failureList.length) msg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  sendSafe(apkBatch.chatId, msg);
+  if (apkBatch.timeoutId) clearTimeout(apkBatch.timeoutId);
+  apkBatch = null;
+}
+
+// 超时或部分完成时发送统计（未出结果的分支算「未完成」）
+function sendBatchSummaryPartial() {
+  if (!apkBatch) return;
+  const successList = [];
+  const failureList = [];
+  const pendingList = [];
+  for (const b of apkBatch.branches) {
+    const o = apkBatch.outcomes.get(b);
+    if (o === 'success') successList.push(b);
+    else if (o === 'failure') failureList.push(b);
+    else pendingList.push(b);
+  }
+  let msg = `📊 APK 批量打包统计（已超时/部分完成）\n\n✅ 成功 ${successList.length} 条`;
+  if (successList.length) msg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  msg += `\n\n❌ 失败 ${failureList.length} 条`;
+  if (failureList.length) msg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  msg += `\n\n⏳ 未完成 ${pendingList.length} 条`;
+  if (pendingList.length) msg += '\n' + pendingList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  sendSafe(apkBatch.chatId, msg);
+  if (apkBatch.timeoutId) clearTimeout(apkBatch.timeoutId);
+  apkBatch = null;
+}
+
 console.log(chalk.green('✓ Telegram Bot 已启动（APK 选择监听模式）'));
 console.log(chalk.gray('等待群组消息...\n'));
 
@@ -47,13 +101,15 @@ bot.on('message', (msg) => {
     const username = msg.from?.username || msg.from?.first_name || '';
     const text = msg.text ?? '';
 
-    // 如果配置了 CHAT_ID，则只关注指定群组
-    if (config.chatId && chatId?.toString() !== config.chatId.toString()) {
+    // 只处理：配置的目标群 或 私聊（私聊可执行 /apk_list、/apk_add、/apk_del）
+    const isTargetGroup = config.chatId && chatId?.toString() === config.chatId.toString();
+    const isPrivate = msg.chat?.type === 'private';
+    if (!isTargetGroup && !isPrivate) {
         return;
     }
 
-    // 1) 打印基础信息（仅目标群）
-    console.log(chalk.gray('收到群组消息 (Bot 监听中):'));
+    // 1) 打印基础信息
+    console.log(chalk.gray(isPrivate ? '收到私聊消息 (Bot 监听中):' : '收到群组消息 (Bot 监听中):'));
     console.log(chalk.gray('  群组ID  :'), chatId);
     if (chatTitle) {
         console.log(chalk.gray('  群组名  :'), chatTitle);
@@ -138,13 +194,31 @@ bot.on('message', (msg) => {
         }
     }
 
-    // 3) 自动：监听“APK 打包成功”通知 -> 从等待列表中移除
+    // 3) 自动：监听“APK 打包成功”通知 -> 从等待列表中移除，并计入批次统计
     if (text && text.startsWith('✅ APK 打包并上传完成')) {
-        const match = text.match(/🌿 分支:\s*([^\s]+)/);
-        if (match && match[1]) {
-            const doneBranch = match[1].trim();
+        const doneBranch = extractBranchFromApkMessage(text);
+        if (doneBranch) {
             apkTracker.remove(doneBranch);
             console.log(chalk.green('已从等待打包 APK 列表移除分支:'), doneBranch);
+            if (apkBatch) {
+                const key = apkBatch.branches.find((b) => b.toLowerCase() === doneBranch.toLowerCase());
+                if (key) {
+                    apkBatch.outcomes.set(key, 'success');
+                    trySendBatchSummary();
+                }
+            }
+        }
+    }
+
+    // 3b) 自动：监听“APK 打包失败”通知 -> 计入批次统计
+    if (text && text.includes('❌ APK 打包失败')) {
+        const failBranch = extractBranchFromApkMessage(text);
+        if (failBranch && apkBatch) {
+            const key = apkBatch.branches.find((b) => b.toLowerCase() === failBranch.toLowerCase());
+            if (key) {
+                apkBatch.outcomes.set(key, 'failure');
+                trySendBatchSummary();
+            }
         }
     }
 
@@ -156,7 +230,7 @@ bot.on('message', (msg) => {
         if (cleanCmd === '/help') {
             const helpMessage =
                 '🤖 APK 打包助手 - 命令列表\n\n' +
-                '\n启动后会自动记录未打包 APK 的分支，复刻凌晨最后一套结束时，需执行 /apk_start_all，即可一键触发所有待打包 APK 的构建流程。\n\n\n' +
+                '启动后会自动记录未打包 APK 的分支，复刻凌晨最后一套结束时，需执行 /apk_start_all，即可一键触发所有待打包 APK 的构建流程。\n\n' +
                 '/apk_list - 查看等待打包 APK 列表\n' +
                 '/apk_add 分支1 分支2 ... - 手动添加等待打包 APK 分支\n' +
                 '/apk_del 分支1 分支2 ... - 从列表中删除分支\n' +
@@ -259,35 +333,49 @@ function handleApkCommands(rawText, chatId, messageId) {
 
     // /apk_start_all - 一键启动所有等待打包 APK 分支
     if (cmd === '/apk_start_all') {
-        const all = apkTracker.getAll();
-        if (all.length === 0) {
-            sendSafe(chatId, '📭 当前没有等待打包 APK 的分支');
-            return bot.deleteMessage(chatId, messageId).catch(() => { });
-        }
-
-        // 按分支去重，避免同一分支多次触发
-        const uniqueBranches = Array.from(
-            new Set(all.map((item) => (item.branch || '').trim()).filter(Boolean)),
-        );
-
-        if (uniqueBranches.length === 0) {
-            return sendSafe(chatId, '📭 当前没有有效的分支记录');
-        }
-
-        // 依次触发用户机器人的打包 APK 流程
-        for (const branch of uniqueBranches) {
-            console.log(chalk.cyan('一键启动打包 APK，分支:'), branch);
-            sendSafe(chatId, `打包APK ${branch}`);
-        }
-
-        sendSafe(
-            chatId,
-            `🚀 已为以下分支触发打包 APK:\n\n${uniqueBranches
-                .map((b, i) => `${i + 1}. ${b}`)
-                .join('\n')}`,
-        );
+        runApkStartAll(chatId);
         return bot.deleteMessage(chatId, messageId).catch(() => { });
     }
+}
+
+// 执行「一键触发所有等待打包 APK」：发触发消息并建立批次统计，全部完成或 2 小时后发统计
+function runApkStartAll(chatId) {
+    const all = apkTracker.getAll();
+    if (all.length === 0) {
+        sendSafe(chatId, '📭 当前没有等待打包 APK 的分支');
+        return;
+    }
+
+    const uniqueBranches = Array.from(
+        new Set(all.map((item) => (item.branch || '').trim()).filter(Boolean)),
+    );
+    if (uniqueBranches.length === 0) {
+        sendSafe(chatId, '📭 当前没有有效的分支记录');
+        return;
+    }
+
+    for (const branch of uniqueBranches) {
+        console.log(chalk.cyan('一键启动打包 APK，分支:'), branch);
+        sendSafe(chatId, `打包APK ${branch}`);
+    }
+
+    sendSafe(
+        chatId,
+        `🚀 已为以下分支触发打包 APK（全部完成后将发送成功/失败统计）:\n\n${uniqueBranches
+            .map((b, i) => `${i + 1}. ${b}`)
+            .join('\n')}`,
+    );
+
+    if (apkBatch && apkBatch.timeoutId) clearTimeout(apkBatch.timeoutId);
+    apkBatch = {
+        chatId,
+        branches: uniqueBranches,
+        startTime: Date.now(),
+        outcomes: new Map(),
+        timeoutId: setTimeout(() => {
+            sendBatchSummaryPartial();
+        }, BATCH_SUMMARY_TIMEOUT_MS),
+    };
 }
 
 // 处理「是否打包 APK」按钮回调
@@ -368,6 +456,24 @@ bot.on('callback_query', (query) => {
             .catch(() => { });
     }
 });
+
+// 每天凌晨 5 点自动执行 /apk_start_all 并发送提醒
+let lastCronRunDay = null; // 'YYYY-MM-DD'
+setInterval(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (hour === 5 && minute === 0 && lastCronRunDay !== today) {
+        lastCronRunDay = today;
+        const targetChatId = config.chatId;
+        if (targetChatId) {
+            sendSafe(targetChatId, '⏰ 凌晨 5 点自动触发：正在执行 /apk_start_all …');
+            runApkStartAll(targetChatId);
+            console.log(chalk.cyan('已执行凌晨 5 点自动 /apk_start_all'));
+        }
+    }
+}, 60 * 1000);
 
 // 错误处理
 bot.on('polling_error', (error) => {

@@ -29,26 +29,29 @@ function getAll() {
   return readDb();
 }
 
+// 分支名比较：不区分大小写，避免 7ktigre / 7kTigre 重复或删不掉
+function branchEquals(a, b) {
+  return (a || '').toLowerCase() === (b || '').toLowerCase();
+}
+
 function addOrUpdate(branch, extra = {}) {
   const b = normalizeBranch(branch);
   if (!b) return;
   const list = readDb();
   const now = new Date().toISOString();
 
-  const idx = list.findIndex(item => item.branch === b);
+  const idx = list.findIndex(item => branchEquals(item.branch, b));
   const record = {
     branch: b,
     source: extra.source || 'auto', // auto | manual
-    fileName: extra.fileName || null,
-    chatId: extra.chatId || null,
-    messageId: extra.messageId || null,
+    fileName: extra.fileName ?? list[idx]?.fileName ?? null,
+    chatId: extra.chatId ?? list[idx]?.chatId ?? null,
+    messageId: extra.messageId ?? list[idx]?.messageId ?? null,
     updatedAt: now,
-    createdAt: extra.createdAt || now,
+    createdAt: extra.createdAt || (idx >= 0 ? list[idx].createdAt : now),
   };
 
   if (idx >= 0) {
-    // 保留原 createdAt
-    record.createdAt = list[idx].createdAt || record.createdAt;
     list[idx] = record;
   } else {
     list.push(record);
@@ -61,7 +64,7 @@ function remove(branch) {
   const b = normalizeBranch(branch);
   if (!b) return;
   const list = readDb();
-  const next = list.filter(item => item.branch !== b);
+  const next = list.filter(item => !branchEquals(item.branch, b));
   if (next.length !== list.length) {
     writeDb(next);
   }
