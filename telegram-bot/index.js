@@ -90,6 +90,9 @@ function sendBatchSummaryPartial() {
   apkBatch = null;
 }
 
+// 是否启用压缩包交互（临时可关闭，默认开启；设置 ENABLE_ZIP_INTERACTIVE=0 可关闭）
+const ENABLE_ZIP_INTERACTIVE = process.env.ENABLE_ZIP_INTERACTIVE !== '0';
+
 console.log(chalk.green('✓ Telegram Bot 已启动（APK 选择监听模式）'));
 console.log(chalk.gray('等待群组消息...\n'));
 
@@ -118,8 +121,8 @@ bot.on('message', (msg) => {
     console.log(chalk.gray('  用户名  :'), username);
     console.log(chalk.gray('  文本内容:'), text);
 
-    // 2) 监听压缩包 -> 弹出「是否打包 APK」按钮，并按规则收录
-    if (msg.document && msg.document.file_name) {
+    // 2) 监听压缩包 -> 弹出「是否打包 APK」按钮，并按规则收录（可通过环境变量关闭）
+    if (ENABLE_ZIP_INTERACTIVE && !isPrivate && msg.document && msg.document.file_name) {
         const fileName = msg.document.file_name;
         const branchFromFile = extractBranchNameFromFileName(fileName);
 
@@ -252,7 +255,7 @@ bot.on('message', (msg) => {
 });
 
 function sendSafe(chatId, message) {
-    bot.sendMessage(chatId, message).catch(() => { });
+    bot.sendMessage(chatId, message, { disable_web_page_preview: true }).catch(() => { });
 }
 
 function handleApkCommands(rawText, chatId, messageId) {

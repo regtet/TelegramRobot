@@ -14,6 +14,12 @@ const { spawn } = require('child_process');
 // 显式加载当前目录下的 .env，确保 AWS_* 等环境变量可用
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// APK 打包服务固定代理（与测试脚本 0.js 保持一致）
+const PACK_SERVER_PROXY = {
+    host: '127.0.0.1',
+    port: 7890,
+};
+
 const config = require('./config');
 const Builder = require('./builder');
 const FileSplitter = require('./file-splitter');
@@ -442,6 +448,7 @@ function isBranchAllowed(branchName) {
 
             // 检查是否是"检测"命令
             if (trimmedText.startsWith('检测')) {
+                return;
                 const branchText = trimmedText.substring(2).trim();
 
                 if (branchText.length === 0) {
@@ -522,6 +529,7 @@ function isBranchAllowed(branchName) {
             if (!trimmedText.startsWith('打包')) {
                 return; // 不是打包命令，忽略
             }
+            return; // 不是打包命令，忽略
 
             // 提取分支名（去掉"打包"前缀），支持多个分支用空格或换行隔开
             const branchText = trimmedText.substring(2).trim();
@@ -766,78 +774,8 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            // 从文件名提取分支名（函数内部会检查是否是压缩包）
-            const branchName = extractBranchNameFromFileName(fileName);
-
-            if (!branchName) {
-                // 不是压缩包文件或无法提取分支名，静默跳过（不打印日志）
-                return;
-            }
-
-            // 打印文件信息（只处理压缩包文件）
-            console.log(chalk.gray('收到压缩包文件:'));
-            console.log(chalk.gray('  文件名:'), fileName);
-            console.log(chalk.gray('  大小:'), (fileSize / 1024 / 1024).toFixed(2), 'MB');
-
-            console.log(chalk.cyan(`\n📦 检测到压缩包文件: ${fileName}`));
-            console.log(chalk.cyan(`🔍 提取的分支名: ${branchName}`));
-
-            // 验证分支是否存在
-            console.log(chalk.cyan(`🔍 验证分支是否存在...`));
-
-            // 清除缓存，确保获取最新分支列表
-            builder._branchesCache = null;
-
-            // 在 WG-WEB / WGAME-WEB 中解析实际项目和分支名
-            const resolved = await resolveProjectAndBranch(branchName);
-            const branchExists = !!resolved;
-            const actualBranchName = resolved ? resolved.actualBranchName : branchName;
-
-            if (!branchExists) {
-                const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${branchName}\n🧠 云端代码库扫描中…\n❌ 云端未检测到分支：${branchName}`;
-                console.log(chalk.red(`❌ 分支 ${branchName} 云端未检测到`));
-
-                // 发送 Telegram 消息
-                try {
-                    await client.sendMessage(message.chatId, {
-                        message: errorMsg,
-                        parseMode: 'Markdown'
-                    });
-                } catch (error) {
-                    // 如果 Markdown 解析失败，使用纯文本格式
-                    try {
-                        await client.sendMessage(message.chatId, {
-                            message: `⚠️ 分支检测\n\n🌿 分支: ${branchName}\n❌ 云端未检测到该分支`
-                        });
-                    } catch (err) {
-                        console.log(chalk.yellow('发送消息失败:', err.message));
-                    }
-                }
-                return;
-            }
-
-            console.log(chalk.green(`✓ 分支 ${actualBranchName} 存在（项目: ${resolved.project.name}）`));
-
-            // 将文件处理任务加入队列
-            const fileTask = {
-                fileName,
-                branchName,
-                actualBranchName,
-                project: resolved.project,
-                chatId: message.chatId,
-                timestamp: new Date()
-            };
-
-            if (isProcessingFile || isBuilding) {
-                fileProcessQueue.push(fileTask);
-                console.log(chalk.gray(`📦 文件处理加入队列: ${fileName} (位置 ${fileProcessQueue.length})`));
-                return;
-            }
-
-            // 立即处理文件
-            (async () => {
-                await processFileTask(fileTask);
-            })();
+            // 旧的“自动分析压缩包”功能已关闭，这里直接忽略压缩包，由专门的 bot 处理
+            return;
         } catch (error) {
             console.error(chalk.red('处理文件消息时出错:'), error);
         }
@@ -1800,8 +1738,16 @@ function isBranchAllowed(branchName) {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 await axios.post('http://47.128.239.172:8000/pack', payload, {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 60000, // 适当放宽一点等待时间
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent':
+                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+                        'Accept': '*/*',
+                        'Accept-Language': 'zh-CN,zh;q=0.9',
+                        'Connection': 'keep-alive',
+                    },
+                    timeout: 60000, // 不动原有超时时间
+                    proxy: PACK_SERVER_PROXY,
                 });
 
                 console.log(chalk.green('✅ 打包接口触发成功'));
@@ -1831,7 +1777,11 @@ function isBranchAllowed(branchName) {
 
             try {
                 // 每次下载尝试设置 15 秒超时，超时会主动中止请求并记为一次失败
-                const response = await axios.get(url, { responseType: 'stream', timeout: timeoutMs });
+                const response = await axios.get(url, {
+                    responseType: 'stream',
+                    timeout: timeoutMs,
+                    proxy: PACK_SERVER_PROXY,
+                });
 
                 await new Promise((resolve, reject) => {
                     const writer = fs.createWriteStream(localPath);
@@ -1895,7 +1845,10 @@ function isBranchAllowed(branchName) {
             // 这样可以保证“总共 10 次有效检查”，而网络层错误会自动保底重试
             while (true) {
                 try {
-                    const res = await axios.get('http://47.128.239.172:8000/list', { timeout: 10000 });
+                    const res = await axios.get('http://47.128.239.172:8000/list', {
+                        timeout: 10000,
+                        proxy: PACK_SERVER_PROXY,
+                    });
                     files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
                     break;
                 } catch (error) {
@@ -2105,27 +2058,22 @@ function isBranchAllowed(branchName) {
 
             const { key, url } = await uploadFileToS3(localApkPath, s3Key, 'application/vnd.android.package-archive');
 
-            // 8. 第二条消息：APK 结果 + Logo 信息（Logo 放在 APK 信息上方）
+            // 8. 第二条消息：APK 结果 + Logo / APK 地址（关闭链接预览）
             const finalApkNameForLog = appName || apkFileNameFromServer;
+            const logoUrl = logoInfo && logoInfo.url ? logoInfo.url : '';
+            const apkUrl = url;
+
+            // 例如：
+            // ✅ APK 打包完成 | 66BB2 | app-bet-66bb.apk
+            // Logo地址: https://gulu3.s3.sa-east-1.amazonaws.com/bet-66bb.png
+            // APK地址: https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-66bb.apk
             let msg =
-                `✅ APK 打包并上传完成\n\n` +
-                `🌿 分支: ${branchName}\n` +
-                (primaryDomain ? `🌐 主域名: ${primaryDomain}\n` : '');
-
-            if (logoInfo && logoInfo.url) {
-                msg +=
-                    `🎨 Logo 已上传到 S3\n` +
-                    `🔗 地址: ${logoInfo.url}\n`;
-            }
-
-            msg +=
-                (packageId ? `🆔 Package ID: ${packageId}\n` : '') +
-                `📱 APK 文件名: ${finalApkNameForLog}\n` +
-                `🗂 S3 路径: ${key}\n` +
-                `🔗 下载地址: ${url}`;
+                `✅ APK 打包完成 | ${branchName} | ${finalApkNameForLog}\n` +
+                (logoUrl ? `Logo地址: ${logoUrl}\n` : '') +
+                `APK地址: ${apkUrl}`;
 
             try {
-                await client.sendMessage(chatId, { message: msg });
+                await client.sendMessage(chatId, { message: msg, linkPreview: false });
             } catch (e) {
                 console.log(chalk.yellow('发送 APK 结果消息失败:', e.message));
             }
@@ -2143,7 +2091,7 @@ function isBranchAllowed(branchName) {
                 `📝 错误信息: ${errorMsg}`;
 
             try {
-                await client.sendMessage(chatId, { message: failMsg });
+                await client.sendMessage(chatId, { message: failMsg, linkPreview: false });
             } catch (e) {
                 console.log(chalk.yellow('发送 APK 失败结果消息失败:', e.message));
             }
