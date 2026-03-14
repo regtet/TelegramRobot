@@ -1,260 +1,181 @@
 # WG-WEB Telegram 自动打包机器人
 
-通过 Telegram 消息触发 WG-WEB 项目的自动打包和分发。
-![主界面截图](./image.png)
+通过 Telegram 消息触发 WG-WEB 项目的自动打包（ZIP）、APK 打包与 S3 分发。采用**双机器人**架构：用户账号机器人（User Bot）负责实际构建与发文件，常规 Bot 负责 APK 待办列表与快捷操作。
+
 **⚠️ 当前使用用户账号模式（User Bot），可发送最大 2GB 的文件！**
 
-## 功能特性
+---
 
-- 📦 发送分支名即可自动打包
-- 🚀 自动拉取最新代码
-- 📝 显示最新 commit 信息
-- 📊 显示构建耗时和文件大小
-- 🤖 自动发送打包文件到群组
-- 🔐 支持用户权限控制
-- 🌿 支持多分支构建
+## 功能概览
 
-## 安装步骤
+### 用户机器人（index-user.js）
+
+- 📦 发送「打包 分支名」触发 ZIP 打包并发送到群
+- 📱 发送「打包APK 分支名」或点击 Bot 的「立即打包 APK」触发 APK 构建
+- 🚀 自动拉取最新代码、执行构建、上传 APK 到 S3，并在群里发送结果（含新格式：分支 | apk 文件名 | Logo/APK 地址）
+- 🔐 仅处理 `.env` 中 `CHAT_ID` 指定群组的消息
+- 🌐 代理、AWS S3、打包服务（47.128.239.172:8000）均按当前配置工作
+
+### 常规 Bot（index.js，如 @kk_toolbox_bot）
+
+- 📋 **等待打包 APK 列表**：上传压缩包（可选）弹出「是否打包 APK」二选一；超时或选择后写入 `apk-pending.json`
+- 📤 监听到「✅ APK 打包完成」消息时，从列表中移除对应分支（支持新格式 `✅ APK 打包完成 | 分支 | apk 名`）
+- 🕐 每天凌晨 5 点自动执行一次「一键触发所有等待打包 APK」（/apk_start_all），并发送提醒
+- 📊 `/apk_start_all` 后，全部完成时在群里发送统计：成功 x 条、失败 x 条（含分支名）
+
+### Bot 命令（群组 / 私聊）
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示 APK 助手命令列表 |
+| `/apk_list` | 查看等待打包 APK 列表 |
+| `/apk_add 分支1 分支2 ...` | 手动添加等待打包 APK 分支 |
+| `/apk_del 分支1 分支2 ...` | 从列表中删除指定分支 |
+| `/apk_start_all` | 一键触发当前列表中所有分支的「打包APK」流程 |
+| `/apk_clear` | 清空等待打包 APK 列表 |
+
+私聊 Bot 时，`/apk_list`、`/apk_add`、`/apk_del` 同样可用。
+
+---
+
+## 安装与配置
 
 ### 1. 安装依赖
 
 ```bash
 cd telegram-bot
-npm install
+yarn
+# 或 npm install
 ```
 
-### 2. 获取 Telegram API 凭证
+### 2. 获取 Telegram 凭证
 
-访问 https://my.telegram.org/apps
+- **用户机器人**：访问 https://my.telegram.org/apps 获取 `API_ID`、`API_HASH`，并用手机号登录。
+- **常规 Bot**：在 Telegram 中找 @BotFather 创建 Bot，获取 `BOT_TOKEN`。
 
-1. 用你的手机号登录
-2. 点击 "API development tools"
-3. 填写应用信息：
-   - App title: `WG-WEB Builder`
-   - Short name: `wgbuilder`
-   - Platform: `Desktop`
-4. 创建后获取：
-   - **api_id**（数字）
-   - **api_hash**（字符串）
+### 3. 配置 .env
 
-### 3. 配置 .env 文件
-
-编辑 `.env` 文件：
+在 `telegram-bot` 目录下编辑 `.env`：
 
 ```env
-# Telegram 用户账号配置
+# 常规 Bot（APK 列表、命令、凌晨任务）
+BOT_TOKEN=你的Bot_Token
+BOT_CHAT_ID=-100xxxxxxxx   # Bot 监听的群组 ID（可与 CHAT_ID 不同）
+
+# 用户机器人（实际打包、发文件）
 API_ID=你的api_id
 API_HASH=你的api_hash
-PHONE_NUMBER=+8613800138000  # 你的手机号（带国家码）
-CHAT_ID=-1001234567890       # 目标群组ID（可选，留空则处理所有群组）
+PHONE_NUMBER=+86xxxxxxxxxx
+CHAT_ID=-100xxxxxxxx       # 用户机器人只处理该群消息
 
-# 项目配置
+# 代理（用户机器人与 Bot 均使用；国内必填）
+PROXY_TYPE=5
+PROXY_HOST=127.0.0.1
+PROXY_PORT=7890
+
+# 项目路径
 BUILD_PROJECT_PATH=../WG-WEB
-ALLOWED_USERS=               # 可选：允许的用户ID列表
+# BUILD_PROJECT_PATH_B=../WGAME-WEB   # 可选第二仓库
+ALLOWED_USERS=                        # 可选，逗号分隔用户 ID
+
+# AWS S3（APK 上传）
+AWS_ACCESS_KEY_ID=xxx
+AWS_SECRET_ACCESS_KEY=xxx
+AWS_REGION=sa-east-1
+S3_BUCKET=你的bucket
 ```
 
-### 4. 获取群组 ID（可选）
+- 访问打包服务 `http://47.128.239.172:8000` 的请求（触发打包、查询 /list、下载 APK）在代码中已配置为**显式代理**（127.0.0.1:7890），与浏览器/测试脚本一致。
+- 若需关闭「上传压缩包后弹出是否打包 APK 按钮」，在 `.env` 中增加：`ENABLE_ZIP_INTERACTIVE=0`（默认开启）。
 
-如果你想限制只在特定群组工作：
+### 4. 获取群组 ID
 
-1. 启动程序：`npm start`
-2. 首次运行会要求输入验证码，按提示操作
-3. 在任意群组发送消息
-4. 查看控制台输出的"群组ID"
-5. 将 ID 填入 `.env` 的 `CHAT_ID`
+1. 启动：`yarn dev` 或 `npm run dev`
+2. 在目标群发一条消息
+3. 控制台会打印该群的 `群组ID`，填入 `.env` 的 `CHAT_ID`（用户机器人）和/或 `BOT_CHAT_ID`（Bot）
 
-### 5. 克隆打包仓库
+---
 
-在 `PackageRepos` 目录下克隆一个专门用于打包的仓库：
+## 启动方式
+
+在 `telegram-bot` 目录下：
 
 ```bash
-cd ../
-git clone <你的WG-WEB仓库地址> WG-WEB-Build
-cd WG-WEB-Build
-npm install
+# 同时启动用户机器人 + 常规 Bot（推荐）
+yarn dev
+
+# 仅启动用户机器人
+yarn dev:user
+
+# 仅启动常规 Bot
+yarn dev:bot
 ```
 
-目录结构应该是：
-```
-PackageRepos/
-├── telegram-bot/        # 本项目
-├── WG-WEB/             # 开发目录
-└── WG-WEB-Build/       # 打包专用目录
-```
+`nodemon` 会监听 `.js` 变更自动重启；`session.txt`、`apk-pending.json` 已加入忽略，避免误触重启。
 
-## 使用方法
+---
 
-### 启动 Bot
+## 用户机器人命令（在 CHAT_ID 群内）
 
-```bash
-npm start
-```
-
-或使用 nodemon 自动重启（开发模式）：
-
-```bash
-npm run dev
-```
-
-### Bot 命令
-
-在 Telegram 群组中：
-
-| 命令 | 说明 |
+| 输入 | 说明 |
 |------|------|
-| `/start` | 显示帮助信息 |
-| `/branches` | 查看可用分支列表 |
-| `/status` | 查看配置状态 |
-| `main` | 打包 main 分支 |
-| `dev` | 打包 dev 分支 |
-| `<分支名>` | 打包指定分支 |
+| `/start` | 显示帮助 |
+| `/status` | 配置状态 |
+| `/branches` | 可用分支列表 |
+| `/queue` | 当前打包队列 |
+| `打包 分支1 分支2` | 打包 ZIP 并发送 |
+| `打包APK 分支1 分支2` | 加入 APK 打包流程（构建 + 上传 S3 + 发结果到群） |
+| `取消 分支` / `取消打包 分支` | 取消该分支的打包 |
 
-### 打包流程
+---
 
-1. 在群组中发送分支名，例如：`main`
-2. Bot 自动执行：
-   - ✅ 切换到指定分支
-   - ✅ 拉取最新代码
-   - ✅ 安装/更新依赖
-   - ✅ 执行 `npm run build`
-   - ✅ 压缩 dist 文件夹
-   - ✅ 发送到群组
-3. 接收打包文件 `dist-<分支>-<时间>.zip`
+## 数据文件说明
 
-## 配置说明
+- **apk-pending.json**：等待打包 APK 的分支列表（Bot 维护）。成功消息识别后会按分支移除；分支名大小写不敏感。该文件已加入 `.gitignore`，不提交版本库。
+- **session.txt**：用户机器人的 Telegram 会话，首次登录后生成，勿提交。
 
-### .env 配置项
+---
 
-| 配置项 | 必填 | 说明 |
-|--------|------|------|
-| `BOT_TOKEN` | ✅ | Telegram Bot Token |
-| `CHAT_ID` | ✅ | 接收打包文件的群组 ID |
-| `BUILD_PROJECT_PATH` | ❌ | WG-WEB-Build 路径，默认 `../WG-WEB-Build` |
-| `ALLOWED_USERS` | ❌ | 允许使用的用户 ID，逗号分隔，留空不限制 |
-
-### config.js 高级配置
-
-```javascript
-{
-  build: {
-    buildCommand: 'npm run build',     // 构建命令
-    distPath: 'dist',                  // 输出目录
-    zipOutputPath: './builds',         // zip 存放目录
-    autoInstall: true,                 // 是否每次都 npm install
-    allowedBranches: []                // 允许的分支，留空不限制
-  }
-}
-```
-
-## 权限控制
-
-### 限制特定用户使用
-
-1. 获取你的用户 ID：
-   - 向 bot 发送消息
-   - 查看控制台输出的 "用户ID"
-
-2. 在 `.env` 中配置：
-```env
-ALLOWED_USERS=123456789,987654321
-```
-
-### 限制可打包的分支
-
-在 `config.js` 中配置：
-```javascript
-allowedBranches: ['main', 'dev', 'release']
-```
-
-## 常见问题
-
-### 1. Bot 没有响应
-- 检查 Bot Token 是否正确
-- 确认 bot 已添加到群组
-- 查看控制台是否有错误信息
-
-### 2. 无法获取群组 ID
-- 确保 bot 已被添加到群组并有权限
-- 在群组发送消息后查看控制台
-- 或访问 getUpdates API
-
-### 3. 构建失败
-- 检查 WG-WEB-Build 目录是否存在
-- 确认该目录是完整的 Git 仓库
-- 检查分支名是否正确
-- 查看控制台的详细错误信息
-
-### 4. 文件发送失败
-- 检查文件大小（Telegram 限制 50MB）
-- 确认 bot 在群组中有发送文件权限
-- 检查网络连接
-
-## 开发说明
-
-### 项目结构
+## 项目结构（telegram-bot）
 
 ```
 telegram-bot/
-├── index.js              # 主程序，处理 Telegram 消息
-├── builder.js            # 构建逻辑，执行 git/npm 命令
-├── config.js             # 配置管理
-├── package.json          # 依赖配置
-├── .env                  # 环境变量（不提交到 Git）
-├── .env.example          # 配置示例
-└── builds/               # 临时存放 zip 文件（自动创建）
+├── index-user.js      # 用户机器人：打包 ZIP/APK、S3、群消息处理
+├── index.js            # 常规 Bot：APK 列表、命令、按钮、凌晨任务、统计
+├── apk-tracker.js      # 等待打包 APK 列表的读写（apk-pending.json）
+├── config-reader.js    # 从分支/文件名解析配置（如 extractBranchNameFromFileName）
+├── config.js           # 配置聚合（.env + 构建选项）
+├── builder.js          # 构建逻辑（git/npm/zip）
+├── .env                # 环境变量（不提交）
+├── nodemon.json        # 忽略 session.txt、apk-pending.json 等
+├── package.json
+└── builds/             # 临时 zip 输出（可清理）
 ```
 
-### 修改构建流程
+---
 
-编辑 `builder.js` 中的 `fullBuild` 方法。
+## 常见问题
 
-### 添加新命令
+1. **Bot 收不到群消息**
+   - 在 @BotFather 中对该 Bot 执行 `/setprivacy` → 选 Disable，并把 Bot 移出群后重新拉入。
+2. **47.128.239.172 请求超时 / ECONNRESET**
+   - 代码已对 pack/list/download 使用显式代理（127.0.0.1:7890），请确保本机代理已开启且端口一致。
+3. **执行 /apk_start_all 后 json 未清除**
+   - Bot 通过识别「✅ APK 打包完成」类消息移除对应分支；若成功消息格式变更，需在 `index.js` 的 `extractBranchFromApkMessage` 中兼容新格式（当前已支持「打包完成 | 分支 | apk 名」）。
+4. **S3 上传失败**
+   - 检查 `.env` 中 AWS 密钥、Region、Bucket 是否正确；S3 上传未走 47.128 代理，走直连。
 
-在 `index.js` 中的 `bot.on('message')` 添加处理逻辑。
+---
 
-## 注意事项
+## 安全与维护
 
-⚠️ **安全提示**：
-- 不要将 `.env` 文件提交到 Git
-- 不要公开你的 Bot Token
-- 建议设置 `ALLOWED_USERS` 限制使用权限
-
-⚠️ **资源占用**：
-- 打包过程会占用 CPU 和内存
-- 建议在服务器资源充足时使用
-- 可以限制并发打包数量（当前不支持，可扩展）
-
-## 维护
-
-### 更新依赖
-
-```bash
-npm update
-```
-
-### 清理构建文件
-
-```bash
-rm -rf builds/*.zip
-```
-
-### 后台运行（Linux）
-
-使用 PM2：
-```bash
-npm install -g pm2
-pm2 start index.js --name wg-telegram-bot
-pm2 logs wg-telegram-bot
-```
-
-使用 screen：
-```bash
-screen -S telegram-bot
-npm start
-# Ctrl+A+D 退出
-```
+- 不要将 `.env`、`session.txt`、`apk-pending.json` 提交到 Git。
+- 建议设置 `ALLOWED_USERS` 限制可触发打包的用户。
+- 更新依赖：`yarn` / `npm update`。
+- 清理构建产物：`rm -rf builds/*.zip`（按需）。
+- 功能持续更新-后续md文件不会更新了。
+---
 
 ## License
 
 MIT
-
