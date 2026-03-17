@@ -47,6 +47,11 @@ function addOrUpdate(branch, extra = {}) {
     fileName: extra.fileName ?? list[idx]?.fileName ?? null,
     chatId: extra.chatId ?? list[idx]?.chatId ?? null,
     messageId: extra.messageId ?? list[idx]?.messageId ?? null,
+    // 下面这些字段用于 APK 打包所需的上下文信息（根据需要逐步补充）
+    packageId: extra.packageId ?? list[idx]?.packageId ?? null,
+    appName: extra.appName ?? list[idx]?.appName ?? null,
+    appNameSlug: extra.appNameSlug ?? list[idx]?.appNameSlug ?? null,
+    primaryDomain: extra.primaryDomain ?? list[idx]?.primaryDomain ?? null,
     updatedAt: now,
     createdAt: extra.createdAt || (idx >= 0 ? list[idx].createdAt : now),
   };

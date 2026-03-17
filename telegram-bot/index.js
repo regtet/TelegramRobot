@@ -206,31 +206,12 @@ bot.on('message', (msg) => {
         }
     }
 
-    // 3) 自动：监听“APK 打包成功”通知 -> 从等待列表中移除，并计入批次统计
+    // 3) 自动：监听“APK 打包成功”通知 -> 仅从等待列表中移除
     if (text && text.startsWith('✅ APK 打包')) { // 兼容「打包并上传完成」和「打包完成」两种前缀
         const doneBranch = extractBranchFromApkMessage(text);
         if (doneBranch) {
             apkTracker.remove(doneBranch);
             console.log(chalk.green('已从等待打包 APK 列表移除分支:'), doneBranch);
-            if (apkBatch) {
-                const key = apkBatch.branches.find((b) => b.toLowerCase() === doneBranch.toLowerCase());
-                if (key) {
-                    apkBatch.outcomes.set(key, 'success');
-                    trySendBatchSummary();
-                }
-            }
-        }
-    }
-
-    // 3b) 自动：监听“APK 打包失败”通知 -> 计入批次统计
-    if (text && text.includes('❌ APK 打包失败')) {
-        const failBranch = extractBranchFromApkMessage(text);
-        if (failBranch && apkBatch) {
-            const key = apkBatch.branches.find((b) => b.toLowerCase() === failBranch.toLowerCase());
-            if (key) {
-                apkBatch.outcomes.set(key, 'failure');
-                trySendBatchSummary();
-            }
         }
     }
 
@@ -343,14 +324,14 @@ function handleApkCommands(rawText, chatId, messageId) {
         return bot.deleteMessage(chatId, messageId).catch(() => { });
     }
 
-    // /apk_start_all - 一键启动所有等待打包 APK 分支
+    // /apk_start_all - 一键启动所有等待打包 APK 分支（合并为一条命令）
     if (cmd === '/apk_start_all') {
         runApkStartAll(chatId);
         return bot.deleteMessage(chatId, messageId).catch(() => { });
     }
 }
 
-// 执行「一键触发所有等待打包 APK」：发触发消息并建立批次统计，全部完成或 2 小时后发统计
+// 执行「一键触发所有等待打包 APK」：将所有分支合并成一条「打包APK xxx xxx」命令发送给用户机器人
 function runApkStartAll(chatId) {
     const all = apkTracker.getAll();
     if (all.length === 0) {
@@ -366,28 +347,9 @@ function runApkStartAll(chatId) {
         return;
     }
 
-    for (const branch of uniqueBranches) {
-        console.log(chalk.cyan('一键启动打包 APK，分支:'), branch);
-        sendSafe(chatId, `打包APK ${branch}`);
-    }
-
-    sendSafe(
-        chatId,
-        `🚀 已为以下分支触发打包 APK（全部完成后将发送成功/失败统计）:\n\n${uniqueBranches
-            .map((b, i) => `${i + 1}. ${b}`)
-            .join('\n')}`,
-    );
-
-    if (apkBatch && apkBatch.timeoutId) clearTimeout(apkBatch.timeoutId);
-    apkBatch = {
-        chatId,
-        branches: uniqueBranches,
-        startTime: Date.now(),
-        outcomes: new Map(),
-        timeoutId: setTimeout(() => {
-            sendBatchSummaryPartial();
-        }, BATCH_SUMMARY_TIMEOUT_MS),
-    };
+    const cmd = `打包APK ${uniqueBranches.join(' ')}`;
+    console.log(chalk.cyan('一键启动打包 APK，命令:'), cmd);
+    sendSafe(chatId, cmd);
 }
 
 // 处理「是否打包 APK」按钮回调
@@ -487,8 +449,14 @@ setInterval(() => {
     }
 }, 60 * 1000);
 
+// 是否打印 Telegram Bot 轮询网络错误（默认 false，避免 ECONNRESET 刷屏）
+const ENABLE_TELEGRAM_POLLING_ERROR_LOG = false;
+
 // 错误处理
 bot.on('polling_error', (error) => {
+    if (!ENABLE_TELEGRAM_POLLING_ERROR_LOG) {
+        return;
+    }
     console.error(chalk.red('Polling 错误:'), error.message);
 });
 
