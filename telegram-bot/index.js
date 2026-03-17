@@ -130,7 +130,7 @@ bot.on('message', (msg) => {
     console.log(chalk.gray('  用户名  :'), username);
     console.log(chalk.gray('  文本内容:'), text);
 
-    // 2) 监听压缩包 -> 弹出「是否打包 APK」按钮，并按规则收录（可通过环境变量关闭）
+    // 2) 监听压缩包 -> 弹出「打包 APK」操作按钮，并按规则收录（可通过环境变量关闭）
     if (ENABLE_ZIP_INTERACTIVE && !isPrivate && msg.document && msg.document.file_name) {
         const fileName = msg.document.file_name;
         const branchFromFile = extractBranchNameFromFileName(fileName);
@@ -138,70 +138,74 @@ bot.on('message', (msg) => {
         if (branchFromFile) {
             console.log(chalk.cyan('已收到压缩包，对应分支:'), branchFromFile, '文件名:', fileName);
 
-            bot
-                .sendMessage(
-                    chatId,
-                    `已收到压缩包，对应分支为: ${branchFromFile}\n\n是否立即打包 APK？`,
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [
-                                    {
-                                        text: '✅ 立即打包 APK',
-                                        callback_data: `apk_yes|${branchFromFile}`,
-                                    },
-                                    {
-                                        text: '⏱ 暂不打包（30 秒后自动收录）',
-                                        callback_data: `apk_no|${branchFromFile}`,
-                                    },
-                                ],
-                            ],
-                        },
-                    },
-                )
-                .then((sent) => {
-                    const key = sent.message_id;
-                    if (pendingDecisions.has(key)) {
-                        clearTimeout(pendingDecisions.get(key).timer);
-                    }
-
-                    const timer = setTimeout(() => {
-                        const record = pendingDecisions.get(key);
-                        if (!record) return;
-                        pendingDecisions.delete(key);
-
-                        apkTracker.addOrUpdate(branchFromFile, {
-                            source: 'timeout_auto',
-                            fileName,
-                            chatId,
-                            messageId: msg.message_id,
-                        });
-
-                        console.log(
-                            chalk.yellow(
-                                '30 秒内未选择，已自动收录到等待打包 APK 列表:',
-                            ),
-                            branchFromFile,
-                        );
-
-                        // 超时后更新提示并移除按钮
-                        bot
-                            .editMessageText(
-                                `已收到压缩包，对应分支为: ${branchFromFile}\n\n已超时，默认加入等待打包 APK 列表。`,
+            bot.sendMessage(
+                chatId,
+                `📦 收到 APK 打包任务\n🌿 分支：${branchFromFile}\n⏱ 30秒未操作将自动加入队列`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
                                 {
-                                    chat_id: chatId,
-                                    message_id: key,
+                                    text: '🚀 立即打包',
+                                    callback_data: `apk_now|${branchFromFile}`,
                                 },
-                            )
-                            .catch(() => { });
-                    }, APK_DECISION_TIMEOUT_MS);
+                                {
+                                    text: '❌ 取消任务',
+                                    callback_data: `apk_cancel|${branchFromFile}`,
+                                },
+                            ],
+                            [
+                                {
+                                    text: '📥 加入队列',
+                                    callback_data: `apk_queue|${branchFromFile}`,
+                                },
+                            ],
+                        ],
+                    },
+                }
+            ).then((sent) => {
+                const key = sent.message_id;
+                if (pendingDecisions.has(key)) {
+                    clearTimeout(pendingDecisions.get(key).timer);
+                }
 
-                    pendingDecisions.set(key, {
+                const timer = setTimeout(() => {
+                    const record = pendingDecisions.get(key);
+                    if (!record) return;
+                    pendingDecisions.delete(key);
+
+                    apkTracker.addOrUpdate(branchFromFile, {
+                        source: 'timeout_auto',
+                        fileName,
                         chatId,
-                        branch: branchFromFile,
-                        timer,
+                        messageId: msg.message_id,
                     });
-                })
+
+                    console.log(
+                        chalk.yellow(
+                            '30 秒内未选择，已自动收录到等待打包 APK 队列:',
+                        ),
+                        branchFromFile,
+                    );
+
+                    // 超时后更新提示并移除按钮
+                    bot
+                        .editMessageText(
+                            `分支: ${branchFromFile}\n已加入「等待打包 APK」队列。`,
+                            {
+                                chat_id: chatId,
+                                message_id: key,
+                            },
+                        )
+                        .catch(() => { });
+                }, APK_DECISION_TIMEOUT_MS);
+
+                pendingDecisions.set(key, {
+                    chatId,
+                    branch: branchFromFile,
+                    timer,
+                });
+            })
                 .catch(() => { });
         }
     }
@@ -381,16 +385,16 @@ bot.on('callback_query', (query) => {
         return;
     }
 
-    if (action === 'apk_yes') {
-        // 用户选择立即打包：清理超时定时器，不再走自动收录逻辑
+    if (action === 'apk_now') {
+        // 用户选择「立即打包」：清理超时定时器，不再走自动收录逻辑
         if (record && record.timer) {
             clearTimeout(record.timer);
         }
         pendingDecisions.delete(messageId);
 
-        // 用户选择立即打包：记录到等待列表，并触发用户机器人的打包 APK 流程
+        // 记录到等待列表，并触发用户机器人的打包 APK 流程
         apkTracker.addOrUpdate(branch, {
-            source: 'user_yes',
+            source: 'user_now',
             chatId,
             messageId,
         });
@@ -400,7 +404,7 @@ bot.on('callback_query', (query) => {
         // 更新提示并移除按钮
         bot
             .editMessageText(
-                `分支: ${branch}\n\n已选择立即打包 APK，正在触发打包流程...`,
+                `分支: ${branch}\n已选择立即打包 APK，正在触发打包流程...`,
                 {
                     chat_id: chatId,
                     message_id: messageId,
@@ -410,18 +414,45 @@ bot.on('callback_query', (query) => {
 
         // 通过在群里发送「打包APK 分支」来触发用户机器人
         sendSafe(chatId, `打包APK ${branch}`);
-    } else if (action === 'apk_no') {
-        // 用户选择暂不打包：清理定时器，本次完全不加入等待列表
+    } else if (action === 'apk_queue') {
+        // 用户选择「加入队列」：清理定时器，只记录到等待列表，不立即触发打包
         if (record && record.timer) {
             clearTimeout(record.timer);
         }
         pendingDecisions.delete(messageId);
 
-        console.log(chalk.cyan('用户选择暂不打包 APK，本次不会加入等待列表，分支:'), branch);
+        apkTracker.addOrUpdate(branch, {
+            source: 'queue_manual',
+            chatId,
+            messageId,
+        });
+
+        console.log(chalk.cyan('用户选择加入打包队列，分支:'), branch);
 
         bot
             .editMessageText(
-                `分支: ${branch}\n\n已选择暂不立即打包 APK，本次不会加入等待打包 APK 列表。`,
+                `分支: ${branch}\n已加入「等待打包 APK」队列。`,
+                {
+                    chat_id: chatId,
+                    message_id: messageId,
+                },
+            )
+            .catch(() => { });
+    } else if (action === 'apk_cancel') {
+        // 用户选择「取消任务」：清理定时器，并从等待列表中移除（避免 /apk_start_all 仍然包含该分支）
+        if (record && record.timer) {
+            clearTimeout(record.timer);
+        }
+        pendingDecisions.delete(messageId);
+
+        // 确保从 apk-pending.json 中移除该分支（无论之前是否已被自动/分析逻辑写入）
+        apkTracker.remove(branch);
+
+        console.log(chalk.cyan('用户选择取消 APK 任务，本次不会加入等待列表，分支:'), branch);
+
+        bot
+            .editMessageText(
+                `分支: ${branch}\n已取消本次 APK 打包任务。`,
                 {
                     chat_id: chatId,
                     message_id: messageId,

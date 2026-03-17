@@ -37,6 +37,10 @@ const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
 // 是否打印 Telegram MTProto 底层网络重连/超时等详细日志（默认 false，避免刷屏）
 const ENABLE_TELEGRAM_NETWORK_LOG = false;
 
+// 是否启用压缩包自动分析（读取配置、域名反解析等），默认 false
+// 置为 true 时，自动上传 / 手动上传的 zip 都会触发「🔍 正在分析压缩包…」
+const ENABLE_ZIP_ANALYZE = false;
+
 // 简单防抖：避免短时间内反复打开
 let lastLaunchTime = 0;
 const LAUNCH_DEBOUNCE_MS = 10000; // 10 秒内只触发一次
@@ -546,7 +550,15 @@ function isBranchAllowed(branchName) {
             if (!trimmedText.startsWith('打包')) {
                 return; // 不是打包命令，忽略
             }
-            return; // 不是打包命令，忽略
+
+            // 立刻删除用户输入的打包指令，实现静默触发
+            if (message.id) {
+                try {
+                    await client.deleteMessages(message.chatId, [message.id], { revoke: true });
+                } catch (e) {
+                    console.log(chalk.yellow('删除打包指令消息失败（可忽略）:', e.message));
+                }
+            }
 
             // 提取分支名（去掉"打包"前缀），支持多个分支用空格或换行隔开
             const branchText = trimmedText.substring(2).trim();
@@ -625,31 +637,31 @@ function isBranchAllowed(branchName) {
             }
 
             if (invalidBuildBranches.length > 0) {
-                console.log(chalk.yellow(`⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`));
-                try {
-                    await client.sendMessage(message.chatId, {
-                        message: `⚠ 以下分支在两个仓库中都不存在，将跳过:\n${invalidBuildBranches.join(', ')}`
-                    });
-                } catch (error) {
-                    console.log(chalk.yellow('发送消息失败:', error.message));
-                }
+                console.log(
+                    chalk.yellow(
+                        `⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`,
+                    ),
+                );
             }
 
             if (resolvedBuildTargets.length === 0) {
                 console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
-                try {
-                    await client.sendMessage(message.chatId, {
-                        message: `❌ 所有分支都不存在，取消打包`
-                    });
-                } catch (error) {
-                    console.log(chalk.yellow('发送消息失败:', error.message));
-                }
                 return;
             }
 
             const validBranches = resolvedBuildTargets.map(t => t.actualBranchName);
             console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
             console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
+
+            // 删除用户输入的打包命令，改为静默触发
+            const msgId = message.id;
+            if (msgId) {
+                try {
+                    await client.deleteMessages(message.chatId, [msgId], { revoke: true });
+                } catch (e) {
+                    console.log(chalk.yellow('删除打包指令消息失败（可忽略）:', e.message));
+                }
+            }
 
             // 过滤掉已在队列中或正在打包的分支
             const newTargets = [];
@@ -688,20 +700,6 @@ function isBranchAllowed(branchName) {
             if (newTargets.length === 0) {
                 console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
                 return;
-            }
-
-            // 发送消息到 Telegram（只输出一次，只包含新分支）
-            try {
-                const logMessage =
-                    `🚀 打包任务启动\n` +
-                    `📋 分支列表: ${newTargets.map(t => t.actualBranchName).join(', ')}\n` +
-                    `⏳ 正在处理中...`;
-
-                await client.sendMessage(message.chatId, {
-                    message: logMessage
-                });
-            } catch (error) {
-                console.log(chalk.yellow('发送消息失败:', error.message));
             }
 
             // 处理多个分支（只处理新的有效分支）
@@ -791,7 +789,46 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            // 旧的“自动分析压缩包”功能已关闭，这里直接忽略压缩包，由专门的 bot 处理
+            // 手动上传压缩包：根据文件名解析分支并触发与自动上传相同的“分析压缩包”流程（可通过 ENABLE_ZIP_ANALYZE 关闭）
+            if (!ENABLE_ZIP_ANALYZE) {
+                console.log(chalk.gray(`收到手动上传压缩包，但已关闭自动分析功能，已跳过: ${fileName}`));
+                return;
+            }
+
+            const branchFromFile = extractBranchNameFromFileName(fileName);
+            if (!branchFromFile) {
+                console.log(chalk.gray(`手动上传压缩包但未能从文件名解析分支，已跳过: ${fileName}`));
+                return;
+            }
+
+            let resolved;
+            try {
+                resolved = await resolveProjectAndBranch(branchFromFile);
+            } catch (e) {
+                console.log(chalk.yellow(`在项目中解析手动上传压缩包对应分支失败: ${branchFromFile} - ${e.message}`));
+            }
+
+            if (!resolved) {
+                console.log(chalk.red(`❌ 手动上传压缩包对应分支在 WG-WEB / WGAME-WEB 中均未找到: ${branchFromFile}`));
+                return;
+            }
+
+            const fileTask = {
+                fileName,
+                branchName: branchFromFile,
+                actualBranchName: resolved.actualBranchName,
+                project: resolved.project,
+                chatId: message.chatId,
+                timestamp: new Date(),
+            };
+
+            if (isProcessingFile || isBuilding) {
+                fileProcessQueue.push(fileTask);
+            } else {
+                (async () => {
+                    await processFileTask(fileTask);
+                })();
+            }
             return;
         } catch (error) {
             console.error(chalk.red('处理文件消息时出错:'), error);
@@ -1191,11 +1228,6 @@ function isBranchAllowed(branchName) {
         if (resolvedInfos.length === 0) {
             const errorMsg = `❌ 所有分支都不存在: ${branchNames.join(', ')}`;
             console.log(chalk.red(errorMsg));
-            try {
-                await client.sendMessage(chatId, { message: errorMsg });
-            } catch (error) {
-                console.log(chalk.yellow('发送消息失败:', error.message));
-            }
             return;
         }
 
@@ -2187,13 +2219,11 @@ function isBranchAllowed(branchName) {
         }
 
         if (invalidBranches.length > 0) {
-            try {
-                await client.sendMessage(chatId, {
-                    message: `⚠ 以下分支在两个仓库中都未找到，将跳过:\n${invalidBranches.join(', ')}`,
-                });
-            } catch (e) {
-                console.log(chalk.yellow('发送无效分支提示失败:', e.message));
-            }
+            console.log(
+                chalk.yellow(
+                    `⚠ 以下分支在两个仓库中都未找到，将跳过: ${invalidBranches.join(', ')}`,
+                ),
+            );
         }
 
         if (resolvedTargets.length === 0) {
@@ -2302,6 +2332,117 @@ function isBranchAllowed(branchName) {
         }
     }
 
+    // 上传 ZIP 到 Telegram 的任务队列
+    const uploadQueue = [];
+    let isUploading = false;
+
+    async function processUploadQueue() {
+        if (isUploading) return;
+        isUploading = true;
+
+        while (uploadQueue.length > 0) {
+            const task = uploadQueue.shift();
+            const { project, branchName, chatId, result } = task;
+            const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
+
+            if (!result || !result.success || !result.zipFilePath) {
+                log(chalk.yellow('跳过上传：构建结果无效或缺少 zip 文件路径'));
+                continue;
+            }
+
+            // 上传 ZIP 到 Telegram，增加简单重试以应对短暂断线（Not connected / connection closed 等）
+            let uploadSuccess = false;
+            const maxUploadAttempts = 3;
+            const uploadDelayMs = 3000;
+
+            log('构建完成，开始上传...');
+
+            for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
+                try {
+                    log(chalk.cyan(`开始上传构建产物到 Telegram（尝试 ${attempt}/${maxUploadAttempts}）`));
+                    await client.sendFile(chatId, {
+                        file: result.zipFilePath,
+                        forceDocument: true,
+                    });
+                    log(chalk.green('上传完成'));
+                    uploadSuccess = true;
+                    break;
+                } catch (error) {
+                    const msg = (error && error.message) || '';
+                    log(chalk.red(`上传失败（第 ${attempt}/${maxUploadAttempts} 次）：${msg}`));
+
+                    const retryable =
+                        /Not connected/i.test(msg) ||
+                        /connection closed/i.test(msg) ||
+                        /ETIMEDOUT/i.test(msg);
+
+                    if (!retryable || attempt === maxUploadAttempts) {
+                        break;
+                    }
+
+                    log(chalk.yellow(`⏳ ${uploadDelayMs / 1000} 秒后重试上传到 Telegram...`));
+                    await new Promise(resolve => setTimeout(resolve, uploadDelayMs));
+                }
+            }
+
+            if (!uploadSuccess) {
+                log(chalk.red('上传多次失败，放弃发送构建产物到 Telegram'));
+            }
+
+            // 构建完成后，根据配置决定是否执行自动压缩包分析
+            if (!ENABLE_ZIP_ANALYZE) {
+                if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
+                    fs.unlinkSync(result.zipFilePath);
+                    log('已清理临时文件');
+                }
+                continue;
+            }
+
+            // 构建完成后，模拟“上传压缩包”触发后续检测流程
+            try {
+                if (project && chatId && result && (result.zipFileName || result.zipFilePath)) {
+                    const fileName =
+                        result.zipFileName ||
+                        (result.zipFilePath ? path.basename(result.zipFilePath) : `${branchName}.zip`);
+
+                    const fileTask = {
+                        fileName,
+                        branchName,
+                        actualBranchName: branchName,
+                        project,
+                        chatId,
+                        timestamp: new Date(),
+                    };
+
+                    if (isProcessingFile || isBuilding) {
+                        fileProcessQueue.push(fileTask);
+                    } else {
+                        await processFileTask(fileTask);
+                    }
+                } else {
+                    log(chalk.gray('跳过自动压缩包检测：缺少 project/chatId 或 zip 信息'));
+                }
+            } catch (e) {
+                log(chalk.yellow('自动触发压缩包检测失败（可忽略）:'), e.message);
+            } finally {
+                if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
+                    fs.unlinkSync(result.zipFilePath);
+                    log('已清理临时文件');
+                }
+            }
+        }
+
+        isUploading = false;
+    }
+
+    function enqueueUploadTask(project, branchName, chatId, result) {
+        uploadQueue.push({ project, branchName, chatId, result });
+        // 异步处理上传队列，不阻塞构建队列
+        processUploadQueue().catch((err) => {
+            console.error(chalk.red('处理上传队列时出错:'), err);
+        });
+    }
+
     // 执行构建流程（可复用函数，使用指定 project 的 builder）
     async function executeBuild(project, branchName, senderId, chatId) {
         shouldCancelBuild = false;
@@ -2332,89 +2473,8 @@ function isBranchAllowed(branchName) {
             return { cancelled: false };
         }
 
-        log('构建完成，开始上传...');
-
-        if (shouldCancelBuild) {
-            log(chalk.yellow('上传前取消'));
-            if (fs.existsSync(result.zipFilePath)) {
-                fs.unlinkSync(result.zipFilePath);
-            }
-            return { cancelled: true };
-        }
-
-        // 上传 ZIP 到 Telegram，增加简单重试以应对短暂断线（Not connected / connection closed 等）
-        let uploadSuccess = false;
-        const maxUploadAttempts = 3;
-        const uploadDelayMs = 3000;
-
-        for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
-            try {
-                log(chalk.cyan(`开始上传构建产物到 Telegram（尝试 ${attempt}/${maxUploadAttempts}）`));
-                await client.sendFile(chatId, {
-                    file: result.zipFilePath,
-                    forceDocument: true,
-                });
-                log(chalk.green('上传完成'));
-                uploadSuccess = true;
-                break;
-            } catch (error) {
-                const msg = (error && error.message) || '';
-                log(chalk.red(`上传失败（第 ${attempt}/${maxUploadAttempts} 次）：${msg}`));
-
-                const retryable =
-                    /Not connected/i.test(msg) ||
-                    /connection closed/i.test(msg) ||
-                    /ETIMEDOUT/i.test(msg);
-
-                if (!retryable || attempt === maxUploadAttempts) {
-                    break;
-                }
-
-                log(chalk.yellow(`⏳ ${uploadDelayMs / 1000} 秒后重试上传到 Telegram...`));
-                await new Promise(resolve => setTimeout(resolve, uploadDelayMs));
-            }
-        }
-
-        if (!uploadSuccess) {
-            log(chalk.red('上传多次失败，放弃发送构建产物到 Telegram'));
-        }
-
-        // 构建完成后，模拟“上传压缩包”触发后续检测流程
-        try {
-            if (project && chatId && result && (result.zipFileName || result.zipFilePath)) {
-                const fileName =
-                    result.zipFileName ||
-                    (result.zipFilePath ? path.basename(result.zipFilePath) : `${branchName}.zip`);
-
-                const fileTask = {
-                    fileName,
-                    branchName,
-                    actualBranchName: branchName,
-                    project,
-                    chatId,
-                    timestamp: new Date(),
-                };
-
-                if (isProcessingFile || isBuilding) {
-                    fileProcessQueue.push(fileTask);
-                    log(chalk.gray(`📦 自动构建文件加入检测队列: ${fileName} (位置 ${fileProcessQueue.length})`));
-                } else {
-                    log(chalk.cyan(`📦 自动构建文件触发检测: ${fileName}`));
-                    (async () => {
-                        await processFileTask(fileTask);
-                    })();
-                }
-            } else {
-                log(chalk.gray('跳过自动压缩包检测：缺少 project/chatId 或 zip 信息'));
-            }
-        } catch (e) {
-            log(chalk.yellow('自动触发压缩包检测失败（可忽略）:'), e.message);
-        } finally {
-            if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
-                fs.unlinkSync(result.zipFilePath);
-                log('已清理临时文件');
-            }
-        }
+        // 构建成功后，将上传任务加入上传队列，立即返回让下一个构建继续
+        enqueueUploadTask(project, branchName, chatId, result);
 
         return { cancelled: false };
     }

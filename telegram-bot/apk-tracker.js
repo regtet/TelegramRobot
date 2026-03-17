@@ -34,11 +34,22 @@ function branchEquals(a, b) {
   return (a || '').toLowerCase() === (b || '').toLowerCase();
 }
 
+function formatDateTime(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hour = pad(d.getHours());
+  const minute = pad(d.getMinutes());
+  const second = pad(d.getSeconds());
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
 function addOrUpdate(branch, extra = {}) {
   const b = normalizeBranch(branch);
   if (!b) return;
   const list = readDb();
-  const now = new Date().toISOString();
+  const now = formatDateTime();
 
   const idx = list.findIndex(item => branchEquals(item.branch, b));
   const record = {
