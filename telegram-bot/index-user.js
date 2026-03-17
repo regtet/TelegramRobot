@@ -2270,6 +2270,19 @@ function isBranchAllowed(branchName) {
                             await runApkPackaging(ctx);
                         } catch (e) {
                             console.error(chalk.red(`批量打包任务失败: ${ctx.projectName} / ${ctx.branchName}`), e);
+
+                            const errorMsg = (e && e.message) || String(e);
+                            const failMsg =
+                                `❌ APK 打包失败\n\n` +
+                                `📁 项目: ${ctx.projectName}\n` +
+                                `🌿 分支: ${ctx.branchName}\n` +
+                                `📝 错误信息: ${errorMsg}`;
+
+                            try {
+                                await client.sendMessage(ctx.chatId, { message: failMsg, linkPreview: false });
+                            } catch (sendErr) {
+                                console.log(chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message));
+                            }
                         } finally {
                             running--;
                             runNext();
