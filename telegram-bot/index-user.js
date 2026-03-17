@@ -1892,7 +1892,6 @@ function isBranchAllowed(branchName) {
     async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 180000, chatId, statusMsgId, branchName) {
         const slugForPack = (appNameSlug || '').toLowerCase();
         const targetName = `app-${slugForPack}.apk`;
-        const unsignedPattern = new RegExp(`^unsigned_${slugForPack}_.+_modified\\.apk$`, 'i');
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             console.log(chalk.cyan(`🔍 第 ${attempt}/${maxAttempts} 次检查打包结果...`));
@@ -1935,17 +1934,8 @@ function isBranchAllowed(branchName) {
                 }
             }
 
-            // 优先匹配正式签名的 app-{slug}.apk，且 modified 时间不早于本次打包触发时间
-            let match = files.find(f => f && f.name === targetName);
-
-            // 如果没有正式版本，则尝试匹配 unsigned_{slug}_*.apk
-            if (!match) {
-                match = files.find(f =>
-                    f &&
-                    typeof f.name === 'string' &&
-                    unsignedPattern.test(f.name)
-                );
-            }
+            // 仅匹配正式签名的 app-{slug}.apk，且 modified 时间不早于本次打包触发时间
+            const match = files.find(f => f && f.name === targetName);
 
             if (match && match.modified) {
                 // modified 是格林尼治时间字符串，例如 "2026-02-25 08:58:27"
@@ -2076,6 +2066,8 @@ function isBranchAllowed(branchName) {
             }
         } catch (e) {
             console.log(chalk.yellow('处理 Logo 时发生错误:', e.message));
+            // Logo 相关任何错误都视为本次打包失败
+            throw e;
         }
 
         return {
