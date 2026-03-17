@@ -2110,7 +2110,7 @@ function isBranchAllowed(branchName) {
 
         await callPackApi(appNameSlug, webUrl, imageUrl);
 
-        const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 10, 30000, chatId, statusMsgId, branchName);
+        const packed = await waitForPackedApk(appNameSlug, triggerTimeMs, 10, 60000, chatId, statusMsgId, branchName);
 
         const tempDir = path.join(__dirname, 'tmp');
         if (!fs.existsSync(tempDir)) {
