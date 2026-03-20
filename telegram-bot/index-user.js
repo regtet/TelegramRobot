@@ -2223,6 +2223,10 @@ function isBranchAllowed(branchName) {
             return;
         }
 
+        // 批量汇总：按“本次命令解析到的顺序”展示成功/失败
+        const requestedBranches = resolvedTargets.map(t => t.branchName);
+        const outcomes = new Map(); // branchName -> 'success' | 'failure'
+
         // 2. 串行准备每个分支的打包上下文（避免 Git 并发冲突）
         const contexts = [];
         for (const target of resolvedTargets) {
@@ -2236,6 +2240,7 @@ function isBranchAllowed(branchName) {
                 });
             } catch (e) {
                 console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
+                outcomes.set(branchName, 'failure');
                 try {
                     await client.sendMessage(chatId, {
                         message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
@@ -2256,7 +2261,7 @@ function isBranchAllowed(branchName) {
         const queue = contexts.slice();
         let running = 0;
 
-        return new Promise((resolve) => {
+        await new Promise((resolve) => {
             const runNext = () => {
                 if (queue.length === 0 && running === 0) {
                     resolve();
@@ -2268,8 +2273,10 @@ function isBranchAllowed(branchName) {
                     (async () => {
                         try {
                             await runApkPackaging(ctx);
+                            outcomes.set(ctx.branchName, 'success');
                         } catch (e) {
                             console.error(chalk.red(`批量打包任务失败: ${ctx.projectName} / ${ctx.branchName}`), e);
+                            outcomes.set(ctx.branchName, 'failure');
 
                             const errorMsg = (e && e.message) || String(e);
                             const failMsg =
@@ -2293,6 +2300,28 @@ function isBranchAllowed(branchName) {
 
             runNext();
         });
+
+        // 4. 汇总：所有批量任务结束后发一次统计
+        const successList = requestedBranches.filter(b => outcomes.get(b) === 'success');
+        const failureList = requestedBranches.filter(b => outcomes.get(b) !== 'success');
+
+        const successCount = successList.length;
+        const failureCount = failureList.length;
+
+        let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
+        if (successList.length) {
+            summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+        }
+        summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
+        if (failureList.length) {
+            summaryMsg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+        }
+
+        try {
+            await client.sendMessage(chatId, { message: summaryMsg, linkPreview: false });
+        } catch (e) {
+            console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
+        }
     }
 
     // 处理按钮 / 文本命令触发的 APK 打包 + 上传到 S3（单分支入口）
