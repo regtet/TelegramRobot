@@ -437,6 +437,12 @@ function isBranchAllowed(branchName) {
 
                 console.log(chalk.cyan(`收到打包APK 命令，分支: ${apkBranchNames.join(', ')}`));
 
+                // 单分支走 APK 队列入口，避免触发批量统计；多分支仍走批量流程
+                if (apkBranchNames.length === 1) {
+                    await enqueueApkBuild(apkBranchNames[0], message.chatId);
+                    return;
+                }
+
                 // 批量打包：先依次准备每个分支的配置与 Logo，再并发触发打包接口 + 下载 + 上传
                 await handleBatchApkBuild(apkBranchNames, message.chatId);
                 return;
