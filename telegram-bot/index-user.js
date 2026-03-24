@@ -37,9 +37,9 @@ const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
 // 是否打印 Telegram MTProto 底层网络重连/超时等详细日志（默认 false，避免刷屏）
 const ENABLE_TELEGRAM_NETWORK_LOG = false;
 
-// 是否启用压缩包自动分析（读取配置、域名反解析等），默认 false
+// 是否启用压缩包自动分析（读取配置、域名反解析等），默认 true
 // 置为 true 时，自动上传 / 手动上传的 zip 都会触发「🔍 正在分析压缩包…」
-const ENABLE_ZIP_ANALYZE = false;
+const ENABLE_ZIP_ANALYZE = true;
 
 // 简单防抖：避免短时间内反复打开
 let lastLaunchTime = 0;
@@ -899,53 +899,44 @@ function isBranchAllowed(branchName) {
 
                 if (result.success) {
                     // 格式化 debug 信息
-                    const debugText = result.debug !== undefined
-                        ? (result.debug ? '测试游服' : '正式游服')
+                    const envText = result.debug !== undefined
+                        ? (result.debug ? '测试服' : '正式服')
                         : '未知';
-                    const debugEmoji = result.debug !== undefined
-                        ? (result.debug ? '🧪' : '✅')
-                        : '❓';
-                    const debugValue = result.debug !== undefined
-                        ? `debug: ${result.debug}`
-                        : 'debug: 未检测到';
+                    const debugFlagText = result.debug !== undefined
+                        ? String(result.debug)
+                        : '未检测到';
 
                     // App 名称（来自 appDownPath 最后一段）
                     const appName = result.appName || '未检测到';
 
-                    // 域名反解析结果（主域名 / 备用域名）
+                    // 仅输出主域名（proxyShareUrlList）
                     const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
-                    const backupDomains = Array.isArray(result.backupDomains) ? result.backupDomains : [];
 
                     let msg =
-                        `🔍 正在分析压缩包…\n\n` +
-                        `📦 文件名        : ${fileName}\n` +
-                        `📁 项目          : ${project.name}\n` +
-                        `🌿 分支          : ${actualBranchName}\n` +
-                        `📋 Package ID    : ${result.packageId}\n` +
-                        `📱 App 名称      : ${appName}\n` +
-                        `🎮 游服类型      : ${debugText} (${debugValue})`;
+                        `📦 ${fileName}\n` +
+                        `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
+                        `📱 APK: ${appName}\n` +
+                        `🆔 Package: ${result.packageId}\n` +
+                        `🎮 环境: ${envText} (debug=${debugFlagText})`;
 
-                    if (mainDomains.length > 0 || backupDomains.length > 0) {
-                        msg += `\n\n🌐 域名反解析结果\n`;
-                        msg += `────────────────────────\n\n`;
+                    // 主域名去重（保留首次出现顺序）
+                    const seenDomains = new Set();
+                    const uniqueDomains = mainDomains
+                        .map(d => String(d).trim())
+                        .filter(Boolean)
+                        .filter((d) => {
+                        const key = d.toLowerCase();
+                        if (seenDomains.has(key)) return false;
+                        seenDomains.add(key);
+                        return true;
+                    });
 
-                        if (mainDomains.length > 0) {
-                            msg += `🔹 主域名\n`;
-                            mainDomains.forEach(d => {
-                                msg += `   • ${d}\n`;
-                            });
-                            if (backupDomains.length > 0) {
-                                msg += `\n`;
-                            }
-                        }
-
-                        if (backupDomains.length > 0) {
-                            msg += `🔸 备用域名\n`;
-                            backupDomains.forEach(b => {
-                                const suffix = b && b.hidePhone ? '（隐藏手机号）' : '';
-                                msg += `   • ${b.domain}${suffix}\n`;
-                            });
-                        }
+                    if (uniqueDomains.length > 0) {
+                        msg += `\n\n🌐 主域名:\n`;
+                        uniqueDomains.forEach((d) => {
+                            msg += `- ${d}\n`;
+                        });
+                        msg = msg.trimEnd();
                     }
 
                     console.log(
@@ -1004,7 +995,10 @@ function isBranchAllowed(branchName) {
                         }
                     }
                 } else {
-                    const errorMsg = `🔍 正在分析压缩包…\n📦 文件识别完成：${fileName}\n🌿 分支匹配成功：${actualBranchName}\n🧠 云端代码库扫描中…\n❌ 未检测到 packageId 配置`;
+                    const errorMsg =
+                        `📦 ${fileName}\n` +
+                        `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
+                        `❌ 未检测到 packageId 配置`;
                     console.log(chalk.red(`❌ 分支 ${actualBranchName} 当前分支 未检测到packageId配置`));
 
                     // 发送 Telegram 消息
@@ -1867,7 +1861,7 @@ function isBranchAllowed(branchName) {
             await new Promise(r => setTimeout(r, intervalMs));
         }
 
-        throw new Error(`在 ${maxAttempts} 次轮询内未找到已打包 APK（app-${slugForPack}.apk 或 unsigned_${slugForPack}_*_modified.apk）`);
+        throw new Error(`在 ${maxAttempts} 次轮询内未找到已打包 APK（app-${slugForPack}.apk）`);
     }
 
     // 预处理：为某个分支准备 APK 打包所需的上下文（切分支、拉代码、读配置、上传 Logo）

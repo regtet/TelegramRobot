@@ -40,7 +40,7 @@ const APK_DECISION_TIMEOUT_MS = 30000;
 let apkBatch = null; // { chatId, branches: string[], startTime, outcomes: Map<branch, 'success'|'failure'>, timeoutId }
 const BATCH_SUMMARY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 小时后发未完成汇总
 
-// 从「APK 打包成功/失败」消息中提取分支名
+// 仅从「APK 打包完成」标准成功消息中提取分支名
 function extractBranchFromApkMessage(text) {
     const t = text || '';
 
@@ -49,10 +49,7 @@ function extractBranchFromApkMessage(text) {
     if (m && m[1]) {
         return m[1].trim();
     }
-
-    // 兼容旧格式：🌿 分支: xxx
-    m = t.match(/🌿\s*分支:\s*([^\s\n]+)/);
-    return m && m[1] ? m[1].trim() : null;
+    return null;
 }
 
 // 若当前批次已收齐所有结果，发送统计并清空批次
@@ -210,8 +207,13 @@ bot.on('message', (msg) => {
         }
     }
 
-    // 3) 自动：监听“APK 打包成功”通知 -> 仅从等待列表中移除
-    if (text && text.startsWith('✅ APK 打包')) { // 兼容「打包并上传完成」和「打包完成」两种前缀
+    // 3) 自动：仅监听“APK 打包完成 + 有 APK 地址”的标准成功通知后移除
+    // 失败、超时或其它提示一律不自动移除，避免误删 apk-pending.json 记录
+    if (
+        text &&
+        /^✅\s*APK\s*打包完成\s*\|/m.test(text) &&
+        /APK地址:\s*\S+/m.test(text)
+    ) {
         const doneBranch = extractBranchFromApkMessage(text);
         if (doneBranch) {
             apkTracker.remove(doneBranch);
