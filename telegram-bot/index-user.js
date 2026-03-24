@@ -1554,88 +1554,6 @@ function isBranchAllowed(branchName) {
         throw new Error(`切换分支失败: ${errorMsg}`);
     }
 
-    // APK 构建面板消息（每个 chatId + projectName 一条）
-    const apkPanelMessages = new Map(); // key: `${chatId}_${projectName}` -> messageId
-
-    function getApkPanelKey(chatId, projectName) {
-        return `${String(chatId)}_${projectName}`;
-    }
-
-    function buildApkPanelText(projectName, chatId) {
-        const lines = [];
-
-        // 计算当前项目在该群里的构建中 / 排队中列表
-        const building = [];
-        if (
-            isApkBuilding &&
-            currentApkBuildProjectName === projectName &&
-            currentApkBuildChatId &&
-            String(currentApkBuildChatId) === String(chatId)
-        ) {
-            building.push(currentApkBuildBranch);
-        }
-
-        const queued = apkBuildQueue
-            .filter(task =>
-                task.projectName === projectName &&
-                String(task.chatId) === String(chatId)
-            )
-            .map(task => task.displayBranch || task.branchName);
-
-        const total = building.length + queued.length;
-        const queuedCount = queued.length;
-
-        lines.push(`🛠 ${projectName} APK 构建面板`, '');
-
-        lines.push('🚧 构建中');
-        if (building.length > 0) {
-            for (const name of building) {
-                lines.push(`• ${name}`);
-            }
-        } else {
-            lines.push('• （空）');
-        }
-        lines.push('');
-
-        lines.push(`⏳ 排队中（${queuedCount}）`);
-        if (queuedCount > 0) {
-            for (const name of queued) {
-                lines.push(`• ${name}`);
-            }
-        } else {
-            lines.push('• （空）');
-        }
-        lines.push('');
-
-        lines.push(`📊 当前任务总数：${total}`);
-
-        return lines.join('\n');
-    }
-
-    async function updateApkPanel(chatId, projectName) {
-        if (!projectName) return;
-        const key = getApkPanelKey(chatId, projectName);
-        const messageId = apkPanelMessages.get(key) || null;
-        const text = buildApkPanelText(projectName, chatId);
-
-        try {
-            // 1. 如果有旧面板，先尝试删除（忽略失败）
-            if (messageId) {
-                try {
-                    await client.deleteMessages(chatId, [messageId], { revoke: true });
-                } catch (e) {
-                    console.log(chalk.yellow('删除旧 APK 构建面板失败（可忽略）:', e.message));
-                }
-            }
-
-            // 2. 发送新的面板消息并记录 messageId
-            const msg = await client.sendMessage(chatId, { message: text });
-            apkPanelMessages.set(key, msg.id);
-        } catch (e) {
-            console.log(chalk.yellow('更新 APK 构建面板失败:', e.message));
-        }
-    }
-
     // 将 APK 打包任务加入队列，按顺序执行（按钮、文本命令、压缩包自动触发共用）
     async function enqueueApkBuild(branchName, chatId) {
         // 先解析项目和实际分支名，用于后续统一去重与展示
@@ -1707,8 +1625,6 @@ function isBranchAllowed(branchName) {
             } catch (e) {
                 console.log(chalk.yellow('发送“分支已在队列中”提示失败:', e.message));
             }
-            // 同样更新一次面板，确保面板内容最新
-            await updateApkPanel(chatId, displayProject);
             return;
         }
 
@@ -1721,9 +1637,6 @@ function isBranchAllowed(branchName) {
         });
 
         console.log(chalk.cyan(`📋 APK 打包加入队列: [${displayProject}] ${displayBranch}`));
-
-        // 更新面板
-        await updateApkPanel(chatId, displayProject);
 
         if (!isApkBuilding) {
             processNextApkInQueue();
@@ -1742,9 +1655,6 @@ function isBranchAllowed(branchName) {
 
         console.log(chalk.cyan(`\n📋 处理 APK 队列任务: [${currentApkBuildProjectName}] ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
 
-        // 刚开始处理时刷新一次面板
-        await updateApkPanel(task.chatId, currentApkBuildProjectName);
-
         try {
             await triggerApkBuildForBranch(task.branchName, task.chatId, null);
         } catch (error) {
@@ -1754,9 +1664,6 @@ function isBranchAllowed(branchName) {
             currentApkBuildBranch = '';
             currentApkBuildProjectName = '';
             currentApkBuildChatId = null;
-
-            // 任务完成后再次刷新面板
-            await updateApkPanel(task.chatId, task.projectName || '未知项目');
 
             setTimeout(() => processNextApkInQueue(), 2000);
         }
@@ -1782,7 +1689,7 @@ function isBranchAllowed(branchName) {
         const { project, actualBranchName } = resolved;
         console.log(chalk.cyan(`将在项目 ${project.name} 中打包分支: ${actualBranchName}`));
 
-        // 不再单独发送“构建任务已创建”消息，由 APK 构建面板统一展示队列与进度
+        // 不再单独发送“构建任务已创建”消息，保持群消息简洁
         const statusMsgId = null;
 
         // 这里不再预先读取配置，所有与 appDownPath / proxyShareUrlList 相关的信息
