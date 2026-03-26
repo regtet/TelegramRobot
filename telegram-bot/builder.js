@@ -7,6 +7,10 @@ const chalk = require('chalk');
 
 const execAsync = promisify(exec);
 
+// 是否打印每条 shell 命令的详细日志（默认关闭，避免刷屏）
+// 需要排查时可临时设置环境变量 ENABLE_COMMAND_LOG=1
+const ENABLE_COMMAND_LOG = process.env.ENABLE_COMMAND_LOG === '1';
+
 class Builder {
   constructor(projectPath, config) {
     this.projectPath = path.resolve(__dirname, projectPath);
@@ -17,8 +21,10 @@ class Builder {
    * 执行命令并返回结果
    */
   async runCommand(command, cwd = this.projectPath) {
-    console.log(chalk.blue(`执行命令: ${command}`));
-    console.log(chalk.gray(`工作目录: ${cwd}`));
+    if (ENABLE_COMMAND_LOG) {
+      console.log(chalk.blue(`执行命令: ${command}`));
+      console.log(chalk.gray(`工作目录: ${cwd}`));
+    }
 
     try {
       const { stdout, stderr } = await execAsync(command, {
@@ -26,12 +32,13 @@ class Builder {
         maxBuffer: 10 * 1024 * 1024 // 10MB
       });
 
-      if (stderr && !stderr.includes('warning')) {
+      if (ENABLE_COMMAND_LOG && stderr && !stderr.includes('warning')) {
         console.log(chalk.yellow('警告:'), stderr);
       }
 
       return { success: true, output: stdout };
     } catch (error) {
+      // 失败始终输出，便于定位问题
       console.error(chalk.red('命令执行失败:'), error.message);
       return { success: false, error: error.message };
     }

@@ -883,11 +883,24 @@ function isBranchAllowed(branchName) {
                 }
 
                 // 拉取最新代码（确保读取的是远程最新配置）
+                let codeSyncWarning = false;
                 if (config.build.autoFetchPull) {
                     console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
-                    const pullResult = await project.builder.runCommand('git pull');
-                    if (!pullResult.success) {
-                        console.log(chalk.yellow(`⚠ Pull 失败，使用本地代码: ${pullResult.error}`));
+                    const pullMaxAttempts = 3;
+                    const pullDelayMs = 3000;
+                    let pullResult = null;
+
+                    for (let attempt = 1; attempt <= pullMaxAttempts; attempt++) {
+                        pullResult = await project.builder.runCommand('git pull');
+                        if (pullResult && pullResult.success) break;
+                        if (attempt < pullMaxAttempts) {
+                            await new Promise(r => setTimeout(r, pullDelayMs));
+                        }
+                    }
+
+                    if (!pullResult || !pullResult.success) {
+                        codeSyncWarning = true;
+                        console.log(chalk.yellow(`⚠ Pull 多次失败，使用本地代码: ${(pullResult && pullResult.error) || '未知错误'}`));
                     } else {
                         console.log(chalk.green(`✓ 代码已更新到最新`));
                     }
@@ -918,6 +931,10 @@ function isBranchAllowed(branchName) {
                         `📱 APK: ${appName}\n` +
                         `🆔 Package: ${result.packageId}\n` +
                         `🎮 环境: ${envText} (debug=${debugFlagText})`;
+
+                    if (codeSyncWarning) {
+                        msg += `\n\n⚠ 代码多次拉取失败，本次检测结果可能为旧代码，请以截图为准`;
+                    }
 
                     // 主域名去重（保留首次出现顺序）
                     const seenDomains = new Set();
@@ -1471,8 +1488,20 @@ function isBranchAllowed(branchName) {
                 }
 
                 // 当 fetch 失败导致分支列表陈旧时，用 ls-remote 单独查询该分支是否在远端存在
-                const lsResult = await proj.builder.runCommand('git ls-remote origin ' + trimmedBranch);
-                if (lsResult.success && lsResult.output && lsResult.output.includes('refs/heads/')) {
+                const lsRemoteMaxAttempts = 3;
+                const lsRemoteDelayMs = 3000;
+                let lsResult = null;
+                for (let attempt = 1; attempt <= lsRemoteMaxAttempts; attempt++) {
+                    lsResult = await proj.builder.runCommand('git ls-remote origin ' + trimmedBranch);
+                    if (lsResult && lsResult.success) {
+                        break;
+                    }
+                    if (attempt < lsRemoteMaxAttempts) {
+                        await new Promise(r => setTimeout(r, lsRemoteDelayMs));
+                    }
+                }
+
+                if (lsResult && lsResult.success && lsResult.output && lsResult.output.includes('refs/heads/')) {
                     const m = lsResult.output.match(/refs\/heads\/(\S+)/);
                     const actualName = (m && m[1]) ? m[1].trim() : trimmedBranch;
                     console.log(chalk.cyan(`✓ [${proj.name}] 通过 ls-remote 确认远端分支存在: ${actualName}`));
