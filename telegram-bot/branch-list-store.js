@@ -37,6 +37,16 @@ function normalizeKey(value) {
     return (value || '').trim().toUpperCase();
 }
 
+/** 按不区分大小写匹配 JSON 里的真实 key（如 888Equipe vs 888EQUIPE） */
+function resolveCanonicalKey(data, rawKey) {
+    const norm = normalizeKey(rawKey);
+    if (!norm) return null;
+    for (const k of Object.keys(data)) {
+        if (normalizeKey(k) === norm) return k;
+    }
+    return null;
+}
+
 function parseCommand(text) {
     const parts = (text || '').trim().split(/\s+/).filter(Boolean);
     // 群内常带 /cmd@BotUsername，需去掉 @ 后缀才能匹配 /list /get 等
@@ -104,10 +114,10 @@ function handleCommand(text) {
         if (args.length === 0) {
             return '用法: /get AJ KF';
         }
-        const keys = args.map(normalizeKey);
-        const lines = keys.map((key) => {
-            const item = data[key];
-            return item ? formatOneLine(key, item) : `${key}: 不存在`;
+        const lines = args.map((raw) => {
+            const canonical = resolveCanonicalKey(data, raw);
+            const item = canonical ? data[canonical] : null;
+            return item ? formatOneLine(canonical, item) : `${normalizeKey(raw)}: 不存在`;
         });
         return lines.join('\n');
     }
@@ -116,29 +126,29 @@ function handleCommand(text) {
         if (args.length < 2) {
             return '用法: /set AJ 分支名 [时间...]';
         }
-        const key = normalizeKey(args[0]);
+        const canonicalKey = resolveCanonicalKey(data, args[0]);
         const newBranch = (args[1] || '').trim();
         const times = normalizeTimes(args.slice(2));
 
-        if (!key || !newBranch) {
+        if (!newBranch) {
             return '参数无效';
         }
         if (times.some((token) => !isValidTimeToken(token))) {
             return '时间格式无效，仅支持如: 5 6 10.30';
         }
-        if (!data[key]) {
-            return `${key}: 不存在，无法修改`;
+        if (!canonicalKey) {
+            return `${normalizeKey(args[0])}: 不存在，无法修改`;
         }
 
-        data[key].branch = newBranch;
+        data[canonicalKey].branch = newBranch;
         if (times.length > 0) {
-            data[key].time = times;
+            data[canonicalKey].time = times;
         } else {
-            delete data[key].time;
+            delete data[canonicalKey].time;
         }
         writeData(data);
         const timeText = times.length > 0 ? ` | 预计发布时间: ${times.map(formatTimeToken).join('、')}` : '';
-        return `已修改 ${key}: ${newBranch}${timeText}`;
+        return `已修改 ${canonicalKey}: ${newBranch}${timeText}`;
     }
 
     if (command === '/add') {
@@ -155,7 +165,7 @@ function handleCommand(text) {
         if (times.some((token) => !isValidTimeToken(token))) {
             return '时间格式无效，仅支持如: 5 6 10.30';
         }
-        if (data[key]) {
+        if (resolveCanonicalKey(data, args[0])) {
             return `${key}: 已存在，新增失败`;
         }
 
@@ -172,14 +182,14 @@ function handleCommand(text) {
         return '用法: /del AJ';
     }
 
-    const key = normalizeKey(args[0]);
-    if (!data[key]) {
-        return `${key}: 不存在，删除失败`;
+    const canonicalKey = resolveCanonicalKey(data, args[0]);
+    if (!canonicalKey) {
+        return `${normalizeKey(args[0])}: 不存在，删除失败`;
     }
 
-    delete data[key];
+    delete data[canonicalKey];
     writeData(data);
-    return `已删除 ${key}`;
+    return `已删除 ${canonicalKey}`;
 }
 
 module.exports = {
