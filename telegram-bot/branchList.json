@@ -1,0 +1,129 @@
+{
+  "91": {
+    "branch": "91-salsapg",
+    "desc": "91系列"
+  },
+  "777": {
+    "branch": "lanche777",
+    "desc": "777系列"
+  },
+  "AJ": {
+    "branch": "aj-vocepg",
+    "desc": "AJ系列"
+  },
+  "KF": {
+    "branch": "kf-peixe",
+    "desc": "KF系列"
+  },
+  "OKOK": {
+    "branch": "okok2222",
+    "desc": "OKOK系列"
+  },
+  "BOI": {
+    "branch": "696boi",
+    "desc": "boi系列"
+  },
+  "KK": {
+    "branch": "bcbrkk",
+    "desc": "KK系列"
+  },
+  "EK": {
+    "branch": "ek-maciopg",
+    "desc": "ek系列"
+  },
+  "V5": {
+    "branch": "v5-r7pg",
+    "desc": "V5系列"
+  },
+  "MK": {
+    "branch": "mk-bus",
+    "desc": "MK系列"
+  },
+  "XW": {
+    "branch": "xw-boletopg",
+    "desc": "XW系列",
+    "time": [
+      "5"
+    ]
+  },
+  "DY": {
+    "branch": "dy-levarpg",
+    "desc": "DY系列"
+  },
+  "MANGA": {
+    "branch": "manga-milionario-pg",
+    "desc": "Manga系列"
+  },
+  "W1": {
+    "branch": "w1-bonfirepg",
+    "desc": "W1系列"
+  },
+  "VOY": {
+    "branch": "voy-fruitpg",
+    "desc": "VOY系列"
+  },
+  "WE": {
+    "branch": "we-dairypg",
+    "desc": "WE系列"
+  },
+  "DZ": {
+    "branch": "dz-spanielpg",
+    "desc": "dz系列"
+  },
+  "A8": {
+    "branch": "a8-towelpg",
+    "desc": "A8系列"
+  },
+  "888Equipe": {
+    "branch": "387win",
+    "desc": "888Equipe系列"
+  },
+  "BET": {
+    "branch": "963bet",
+    "desc": "BET系列"
+  },
+  "POP": {
+    "branch": "popbea",
+    "desc": "POP系列"
+  },
+  "7K": {
+    "branch": "7ZWin",
+    "desc": "7K系列"
+  },
+  "777CLUB": {
+    "branch": "273win",
+    "desc": "777CLUB系列"
+  },
+  "AA": {
+    "branch": "antaa",
+    "desc": "AA系列"
+  },
+  "AE": {
+    "branch": "ae-natalpg",
+    "desc": "AE系列"
+  },
+  "ALFA": {
+    "branch": "alfa-modo777",
+    "desc": "ALFA系列"
+  },
+  "BR": {
+    "branch": "br-batujogo",
+    "desc": "BR系列"
+  },
+  "CL": {
+    "branch": "pomarpgcl",
+    "desc": "CL系列"
+  },
+  "COROA皇冠": {
+    "branch": "coroa-ccuupg",
+    "desc": "COROA皇冠系列"
+  },
+  "HMS": {
+    "branch": "hms-scooterpg",
+    "desc": "HMS系列"
+  },
+  "WP白版": {
+    "branch": "wp-comporpg",
+    "desc": "WP白版系列"
+  }
+}

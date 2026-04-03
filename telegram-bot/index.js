@@ -4,6 +4,7 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const config = require('./config');
 const apkTracker = require('./apk-tracker');
 const { extractBranchNameFromFileName } = require('./config-reader');
+const { handleCommand: handleBranchListCommand } = require('./branch-list-store');
 
 // 验证配置
 if (!config.botToken) {
@@ -224,17 +225,34 @@ bot.on('message', (msg) => {
     // 4) 文本命令：/help + /apk_* 管理等待打包 APK 列表
     if (text) {
         const cleanCmd = text.split(/\s+/)[0].split('@')[0];
+        const branchCommandResult = handleBranchListCommand(text);
+
+        // 系列最新分支管理命令：在目标群和私聊中都可用
+        if (branchCommandResult) {
+            sendSafe(chatId, branchCommandResult);
+            return;
+        }
 
         // /help 指令：展示可用命令说明
         if (cleanCmd === '/help') {
-            const helpMessage =
-                '🤖 APK 打包助手 - 命令列表\n\n' +
-                '启动后会自动记录未打包 APK 的分支，复刻凌晨最后一套结束时，需执行 /apk_start_all，即可一键触发所有待打包 APK 的构建流程。\n\n' +
+            const commonHelp =
+                '🤖 打包助手 - 命令列表\n\n' +
+                '【APK 队列命令】\n' +
                 '/apk_list - 查看等待打包 APK 列表\n' +
                 '/apk_add 分支1 分支2 ... - 手动添加等待打包 APK 分支\n' +
                 '/apk_del 分支1 分支2 ... - 从列表中删除分支\n' +
                 '/apk_start_all - 一键触发所有等待打包 APK 分支\n' +
                 '/apk_clear - 清空等待打包 APK 列表\n\n';
+
+            const branchHelp =
+                '【系列最新分支管理】\n' +
+                '/list - 查看全部系列最新分支\n' +
+                '/get AJ KF - 查询一个或多个系列\n' +
+                '/add AJ aj-vocepg - 新增系列\n' +
+                '/set AJ aj-vocepg - 修改系列对应分支\n' +
+                '/del AJ - 删除系列\n\n';
+
+            const helpMessage = commonHelp + branchHelp;
 
             sendSafe(chatId, helpMessage);
             return;

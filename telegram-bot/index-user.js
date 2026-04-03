@@ -249,7 +249,7 @@ function isBranchAllowed(branchName) {
                 }
             }
 
-            // 移除 bot 用户名
+            // 移除 bot 用户名（仅用于后续群内其他命令）
             const cleanText = text.split('@')[0];
 
             // 命令: /start
@@ -270,7 +270,12 @@ function isBranchAllowed(branchName) {
                     `命令:\n` +
                     `/queue - 查看队列\n` +
                     `/branches - 查看分支\n` +
-                    `/status - 查看状态`
+                    `/status - 查看状态\n` +
+                    `/list - 查看分支映射\n` +
+                    `/get AJ KF - 查询映射\n` +
+                    `/set AJ xxx - 修改映射\n` +
+                    `/add AJ xxx - 新增映射\n` +
+                    `/del AJ - 删除映射`
                 );
                 return;
             }
@@ -942,11 +947,11 @@ function isBranchAllowed(branchName) {
                         .map(d => String(d).trim())
                         .filter(Boolean)
                         .filter((d) => {
-                        const key = d.toLowerCase();
-                        if (seenDomains.has(key)) return false;
-                        seenDomains.add(key);
-                        return true;
-                    });
+                            const key = d.toLowerCase();
+                            if (seenDomains.has(key)) return false;
+                            seenDomains.add(key);
+                            return true;
+                        });
 
                     if (uniqueDomains.length > 0) {
                         msg += `\n\n🌐 主域名:\n`;
