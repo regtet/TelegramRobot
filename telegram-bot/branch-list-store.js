@@ -39,7 +39,9 @@ function normalizeKey(value) {
 
 function parseCommand(text) {
     const parts = (text || '').trim().split(/\s+/).filter(Boolean);
-    const command = (parts[0] || '').toLowerCase();
+    // 群内常带 /cmd@BotUsername，需去掉 @ 后缀才能匹配 /list /get 等
+    const rawFirst = parts[0] || '';
+    const command = rawFirst.split('@')[0].toLowerCase();
     const args = parts.slice(1);
     return { command, args };
 }
