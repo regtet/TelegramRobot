@@ -13,7 +13,9 @@ const ENABLE_COMMAND_LOG = process.env.ENABLE_COMMAND_LOG === '1';
 
 class Builder {
   constructor(projectPath, config) {
-    this.projectPath = path.resolve(__dirname, projectPath);
+    this.projectPath = path.isAbsolute(projectPath)
+      ? path.resolve(projectPath)
+      : path.resolve(__dirname, '..', projectPath);
     this.config = config;
   }
 

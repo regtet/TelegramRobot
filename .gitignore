@@ -3,3 +3,4 @@ WGAME-WEB
 /telegram-bot/.env
 /telegram-bot/apk-pending.json
 /telegram-bot/branchList.json
+/telegram-bot/logs/

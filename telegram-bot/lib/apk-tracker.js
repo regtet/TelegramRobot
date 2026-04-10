@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'apk-pending.json');
+const DB_FILE = path.join(__dirname, '..', 'apk-pending.json');
 
 function readDb() {
   try {

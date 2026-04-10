@@ -6,7 +6,8 @@
     "scripts": {
         "dev:user": "nodemon index-user.js",
         "dev:bot": "nodemon index.js",
-        "dev": "concurrently \"yarn dev:user\" \"yarn dev:bot\""
+        "dev": "concurrently \"yarn dev:user\" \"yarn dev:bot\"",
+        "session": "node scripts/get-session.js"
     },
     "keywords": [
         "telegram",

@@ -148,10 +148,14 @@
     "desc": "WP白版系列"
   },
   "FA8": {
-    "branch": "fa8-mario777",
+    "branch": "fa8-lego777",
     "desc": "FA8系列",
     "time": [
-      "18.10"
+      "21.40"
     ]
+  },
+  "FA8白版": {
+    "branch": "fa8-mario777",
+    "desc": "FA8白版系列"
   }
 }

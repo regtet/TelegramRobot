@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_FILE = path.join(__dirname, 'branchList.json');
+const DATA_FILE = path.join(__dirname, '..', 'branchList.json');
 
 function ensureDataShape(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) {

@@ -1,12 +1,17 @@
 {
-  "//": "只监听 JS 代码改动，忽略运行时生成的文件，避免不停重启",
+  "//": "只监听入口与 lib 下代码，忽略运行时文件，避免不停重启",
   "watch": [
-    "*.js"
+    "index.js",
+    "index-user.js",
+    "lib"
   ],
   "ignore": [
     "session.txt",
     "apk-pending.json",
-    "builds/*"
+    "branchList.json",
+    "logs",
+    "tmp",
+    "builds"
   ]
 }
 

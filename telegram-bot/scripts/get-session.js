@@ -3,10 +3,11 @@
  * 在能访问 Telegram 的环境中运行，获取 session 字符串
  */
 
+const path = require('path');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const input = require('input');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
