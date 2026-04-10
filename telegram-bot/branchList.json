@@ -1,49 +1,67 @@
 {
   "91": {
-    "branch": "91-salsapg",
-    "desc": "91系列"
+    "branch": "91-holdallpg",
+    "desc": "91系列",
+    "time": [
+      "02.20"
+    ]
   },
   "777": {
     "branch": "lanche777",
     "desc": "777系列"
   },
   "AJ": {
-    "branch": "aj-vocepg",
-    "desc": "AJ系列"
+    "branch": "aj-hipismopg",
+    "desc": "AJ系列",
+    "time": [
+      "21.40"
+    ]
   },
   "KF": {
-    "branch": "kf-peixe",
+    "branch": "eejjkf",
     "desc": "KF系列"
   },
   "OKOK": {
-    "branch": "okok2222",
-    "desc": "OKOK系列"
+    "branch": "okok4444",
+    "desc": "OKOK系列",
+    "time": [
+      "18.30"
+    ]
   },
   "BOI": {
-    "branch": "696boi",
-    "desc": "boi系列"
+    "branch": "808boi",
+    "desc": "boi系列",
+    "time": [
+      "01.45"
+    ]
   },
   "KK": {
-    "branch": "bcbrkk",
-    "desc": "KK系列"
+    "branch": "pgbrkk",
+    "desc": "KK系列",
+    "time": [
+      "22.00"
+    ]
   },
   "EK": {
-    "branch": "ek-maciopg",
+    "branch": "ek-ondepg",
     "desc": "ek系列"
   },
   "V5": {
-    "branch": "v5-r7pg",
+    "branch": "v5-mobapg",
     "desc": "V5系列"
   },
   "MK": {
-    "branch": "mk-bus",
-    "desc": "MK系列"
+    "branch": "mk-busmk",
+    "desc": "MK系列",
+    "time": [
+      "19.30"
+    ]
   },
   "XW": {
     "branch": "xw-boletopg",
     "desc": "XW系列",
     "time": [
-      "5"
+      "17.00"
     ]
   },
   "DY": {
@@ -51,23 +69,23 @@
     "desc": "DY系列"
   },
   "MANGA": {
-    "branch": "manga-milionario-pg",
+    "branch": "manga-ovospg",
     "desc": "Manga系列"
   },
   "W1": {
-    "branch": "w1-bonfirepg",
+    "branch": "w1-jellypg",
     "desc": "W1系列"
   },
   "VOY": {
-    "branch": "voy-fruitpg",
+    "branch": "voy-notepadpg",
     "desc": "VOY系列"
   },
   "WE": {
-    "branch": "we-dairypg",
+    "branch": "we-condopg",
     "desc": "WE系列"
   },
   "DZ": {
-    "branch": "dz-spanielpg",
+    "branch": "dz-pitcherpg",
     "desc": "dz系列"
   },
   "A8": {
@@ -75,7 +93,7 @@
     "desc": "A8系列"
   },
   "888Equipe": {
-    "branch": "418win",
+    "branch": "428win",
     "desc": "888Equipe系列"
   },
   "BET": {
@@ -103,7 +121,7 @@
     "desc": "AE系列"
   },
   "ALFA": {
-    "branch": "alfa-modo777",
+    "branch": "alfa-F4777",
     "desc": "ALFA系列"
   },
   "BR": {
@@ -119,11 +137,21 @@
     "desc": "COROA皇冠系列"
   },
   "HMS": {
-    "branch": "hms-scooterpg",
-    "desc": "HMS系列"
+    "branch": "hms-cafepg",
+    "desc": "HMS系列",
+    "time": [
+      "22.00"
+    ]
   },
   "WP白版": {
     "branch": "wp-comporpg",
     "desc": "WP白版系列"
+  },
+  "FA8": {
+    "branch": "fa8-mario777",
+    "desc": "FA8系列",
+    "time": [
+      "18.10"
+    ]
   }
 }

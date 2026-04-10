@@ -143,11 +143,12 @@ function handleCommand(text) {
         data[canonicalKey].branch = newBranch;
         if (times.length > 0) {
             data[canonicalKey].time = times;
-        } else {
-            delete data[canonicalKey].time;
         }
         writeData(data);
-        const timeText = times.length > 0 ? ` | 预计发布时间: ${times.map(formatTimeToken).join('、')}` : '';
+        const currentTimes = Array.isArray(data[canonicalKey].time) ? data[canonicalKey].time : [];
+        const timeText = currentTimes.length > 0
+            ? ` | 预计发布时间: ${currentTimes.map(formatTimeToken).join('、')}`
+            : '';
         return `已修改 ${canonicalKey}: ${newBranch}${timeText}`;
     }
 

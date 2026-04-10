@@ -1,5 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const chalk = require('chalk');
+const fs = require('fs');
+const path = require('path');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const config = require('./config');
 const apkTracker = require('./apk-tracker');
@@ -32,6 +34,27 @@ if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
 }
 
 const bot = new TelegramBot(config.botToken, botOptions);
+const BRANCH_OP_LOG_FILE = path.join(__dirname, 'branch-ops.log');
+
+function parseBranchCommand(text) {
+    const first = String(text || '').trim().split(/\s+/)[0] || '';
+    return first.split('@')[0].toLowerCase();
+}
+
+function shouldLogBranchCommand(command) {
+    return ['/add', '/set', '/del'].includes(command);
+}
+
+function appendBranchOpLog({ userId, username, commandText, result }) {
+    const now = new Date().toISOString();
+    const line = `[${now}] uid=${userId ?? ''} user=${username || '-'} cmd=${commandText || ''} => ${result || ''}`;
+
+    try {
+        fs.appendFileSync(BRANCH_OP_LOG_FILE, `${line}\n`, 'utf8');
+    } catch (error) {
+        console.error(chalk.red('写入系列分支日志失败:'), error.message);
+    }
+}
 
 // 记录「是否打包 APK」交互的超时定时器：messageId -> { chatId, branch, timer }
 const pendingDecisions = new Map();
@@ -116,6 +139,24 @@ bot.on('message', (msg) => {
     const isPrivate = msg.chat?.type === 'private';
     if (!isTargetGroup && !isPrivate) {
         return;
+    }
+
+    // 系列最新分支管理命令：写日志文件，不打印到终端
+    if (text) {
+        const branchCommandResult = handleBranchListCommand(text);
+        if (branchCommandResult) {
+            const branchCommand = parseBranchCommand(text);
+            if (shouldLogBranchCommand(branchCommand)) {
+                appendBranchOpLog({
+                    userId,
+                    username,
+                    commandText: text,
+                    result: branchCommandResult,
+                });
+            }
+            sendSafe(chatId, branchCommandResult);
+            return;
+        }
     }
 
     // 1) 打印基础信息
@@ -225,13 +266,6 @@ bot.on('message', (msg) => {
     // 4) 文本命令：/help + /apk_* 管理等待打包 APK 列表
     if (text) {
         const cleanCmd = text.split(/\s+/)[0].split('@')[0];
-        const branchCommandResult = handleBranchListCommand(text);
-
-        // 系列最新分支管理命令：在目标群和私聊中都可用
-        if (branchCommandResult) {
-            sendSafe(chatId, branchCommandResult);
-            return;
-        }
 
         // /help 指令：展示可用命令说明
         if (cleanCmd === '/help') {
