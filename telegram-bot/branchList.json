@@ -1,13 +1,13 @@
 {
   "91": {
-    "branch": "91-holdallpg",
+    "branch": "91-railingpg",
     "desc": "91系列",
     "time": [
       "02.20"
     ]
   },
   "777": {
-    "branch": "lanche777",
+    "branch": "trunfo777",
     "desc": "777系列"
   },
   "AJ": {
@@ -22,7 +22,7 @@
     "desc": "KF系列"
   },
   "OKOK": {
-    "branch": "okok4444",
+    "branch": "okokgpt",
     "desc": "OKOK系列",
     "time": [
       "18.30"
@@ -51,54 +51,59 @@
     "desc": "V5系列"
   },
   "MK": {
-    "branch": "mk-busmk",
+    "branch": "mk-sgd",
     "desc": "MK系列",
     "time": [
       "19.30"
     ]
   },
   "XW": {
-    "branch": "xw-boletopg",
+    "branch": "xw-cruzarpg",
     "desc": "XW系列",
     "time": [
       "17.00"
     ]
   },
   "DY": {
-    "branch": "dy-levarpg",
-    "desc": "DY系列"
+    "branch": "dy-figopg",
+    "desc": "DY系列",
+    "time": [
+      "19.30"
+    ]
   },
   "MANGA": {
-    "branch": "manga-ovospg",
+    "branch": "manga-alegria-pg",
     "desc": "Manga系列"
   },
   "W1": {
-    "branch": "w1-jellypg",
+    "branch": "w1-linseedpg",
     "desc": "W1系列"
   },
   "VOY": {
     "branch": "voy-notepadpg",
-    "desc": "VOY系列"
+    "desc": "VOY系列",
+    "time": [
+      "04.00"
+    ]
   },
   "WE": {
-    "branch": "we-condopg",
-    "desc": "WE系列"
+    "branch": "we-clamberpg",
+    "desc": "WE系列",
+    "time": [
+      "04.00"
+    ]
   },
   "DZ": {
-    "branch": "dz-pitcherpg",
+    "branch": "dz-anemonepg",
     "desc": "dz系列"
   },
   "A8": {
-    "branch": "a8-towelpg",
+    "branch": "a8-marbledpg",
     "desc": "A8系列"
   },
   "888Equipe": {
-    "branch": "428win",
+    "branch": "458win",
     "desc": "888Equipe系列"
-  },
-  "BET": {
-    "branch": "963bet",
-    "desc": "BET系列"
   },
   "POP": {
     "branch": "popbea",
@@ -109,8 +114,11 @@
     "desc": "7K系列"
   },
   "777CLUB": {
-    "branch": "273win",
-    "desc": "777CLUB系列"
+    "branch": "327win",
+    "desc": "777CLUB系列",
+    "time": [
+      "19.00"
+    ]
   },
   "AA": {
     "branch": "antaa",
@@ -121,7 +129,7 @@
     "desc": "AE系列"
   },
   "ALFA": {
-    "branch": "alfa-F4777",
+    "branch": "alfa-55alfa",
     "desc": "ALFA系列"
   },
   "BR": {
@@ -137,7 +145,7 @@
     "desc": "COROA皇冠系列"
   },
   "HMS": {
-    "branch": "hms-cafepg",
+    "branch": "hms-eaglepg",
     "desc": "HMS系列",
     "time": [
       "22.00"
@@ -157,5 +165,21 @@
   "FA8白版": {
     "branch": "fa8-mario777",
     "desc": "FA8白版系列"
+  },
+  "FP": {
+    "branch": "FP-LOBOpg",
+    "desc": "FP系列"
+  },
+  "TY": {
+    "branch": "ty-typgpg",
+    "desc": "TY系列"
+  },
+  "BET经典版": {
+    "branch": "973bet",
+    "desc": "BET经典版系列"
+  },
+  "BOI白版": {
+    "branch": "bbqboi",
+    "desc": "BOI白版系列"
   }
 }

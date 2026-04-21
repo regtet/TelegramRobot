@@ -29,8 +29,8 @@ const userBotLog = require('./lib/user-bot-logger');
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
-const ENABLE_LX_MUSIC_ON_MESSAGE = true;
-// const ENABLE_LX_MUSIC_ON_MESSAGE = false;
+// const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+const ENABLE_LX_MUSIC_ON_MESSAGE = false;
 
 // LX Music 桌面版路径（请确保路径存在）
 const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
@@ -150,6 +150,10 @@ let apkBuildQueue = [];
 let currentApkBuildBranch = '';
 let currentApkBuildProjectName = '';
 let currentApkBuildChatId = null;
+
+// 多分支「打包APK a b c」合并：未发汇总前再次触发会并入同一会话，只发一条 📊 统计
+let apkBatchChunkQueue = []; // { resolvedTargets, chatId }[]
+let apkBatchWorkerPromise = null;
 
 // 文件处理队列
 let isProcessingFile = false; // 是否正在处理文件
@@ -2075,11 +2079,17 @@ function isBranchAllowed(branchName) {
             }
 
             const slug = appNameSlug || branchName;
-            const pngName = `${slug}.png`;
+            // 文件名必须按分支区分：批量并发时若仅用 slug.png，会互相覆盖，且先结束的任务会删掉同路径文件导致后续只发文字
+            const safeSlug = String(slug).replace(/[^a-zA-Z0-9._-]/g, '_');
+            // 恢复为历史规则：仅使用 appDownPath 中 app- 与 .apk 之间的 slug 命名
+            const pngName = `${safeSlug}.png`;
             const pngPath = path.join(tempDir, pngName);
 
             console.log(chalk.cyan(`🖼 正在将 gulu_top.avif 转为 PNG（命名为 ${pngName}）...`));
-            await sharp(logoPath).png().toFile(pngPath);
+            // Windows 下直接 sharp(logoPath) 偶发会导致源文件句柄占用，后续 git checkout 无法 unlink
+            // 这里改为先读入内存再处理，避免长时间持有 repo 内 avif 文件句柄
+            const logoBuffer = fs.readFileSync(logoPath);
+            await sharp(logoBuffer).png().toFile(pngPath);
             console.log(chalk.green(`🖼 PNG Logo 生成完成: ${pngPath}`));
 
             const logoKey = pngName;
@@ -2185,13 +2195,57 @@ function isBranchAllowed(branchName) {
             `APK地址: ${apkUrl}`;
 
         try {
+            let sentWithLogo = false;
             if (logoLocalPath && fs.existsSync(logoLocalPath)) {
                 await client.sendFile(chatId, {
                     file: logoLocalPath,
                     caption: msg,
                     forceDocument: true,
                 });
+                sentWithLogo = true;
+            } else if (logoInfo && logoInfo.url) {
+                // 本地 PNG 已被删或并发冲突时，用已上传 S3 的 Logo 拉取后再发，避免只有文字
+                try {
+                    const res = await axios.get(logoInfo.url, {
+                        responseType: 'arraybuffer',
+                        timeout: 60000,
+                        validateStatus: (s) => s >= 200 && s < 400,
+                    });
+                    const buf = Buffer.from(res.data);
+                    const tmpSendPath = path.join(
+                        tempDir,
+                        `logo-send-${String(branchName).replace(/[^a-zA-Z0-9._-]/g, '_')}-${Date.now()}.png`,
+                    );
+                    fs.writeFileSync(tmpSendPath, buf);
+                    try {
+                        await client.sendFile(chatId, {
+                            file: tmpSendPath,
+                            caption: msg,
+                            forceDocument: true,
+                        });
+                        sentWithLogo = true;
+                    } finally {
+                        try {
+                            if (fs.existsSync(tmpSendPath)) fs.unlinkSync(tmpSendPath);
+                        } catch {
+                            // 忽略
+                        }
+                    }
+                } catch (fetchErr) {
+                    console.log(
+                        chalk.yellow(
+                            `从 S3 拉取 Logo 用于回传失败（将仅发文字）: ${(fetchErr && fetchErr.message) || fetchErr}`,
+                        ),
+                    );
+                }
             } else {
+                console.log(
+                    chalk.yellow(
+                        `无可用本地 Logo 且无 logoInfo.url，仅发送文字完成通知（分支 ${branchName}）`,
+                    ),
+                );
+            }
+            if (!sentWithLogo) {
                 await client.sendMessage(chatId, { message: msg, linkPreview: false });
             }
             try {
@@ -2217,11 +2271,11 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    // 批量打包：多个分支时，先依次准备上下文，再并发触发打包阶段
-    async function handleBatchApkBuild(branchNames, chatId) {
-        // 1. 解析每个分支对应的项目与实际分支名（WG-WEB / WGAME-WEB）
+    // 解析「打包APK」多分支列表（单条命令内去重实际分支名）
+    async function resolveApkBatchTargets(branchNames) {
         const resolvedTargets = [];
         const invalidBranches = [];
+        const seenBranch = new Set();
 
         for (const rawName of branchNames) {
             const name = (rawName || '').trim();
@@ -2229,10 +2283,13 @@ function isBranchAllowed(branchName) {
             try {
                 const resolved = await resolveProjectAndBranch(name);
                 if (resolved) {
+                    const bn = resolved.actualBranchName;
+                    if (seenBranch.has(bn)) continue;
+                    seenBranch.add(bn);
                     resolvedTargets.push({
                         inputName: name,
                         project: resolved.project,
-                        branchName: resolved.actualBranchName,
+                        branchName: bn,
                     });
                 } else {
                     invalidBranches.push(name);
@@ -2242,6 +2299,212 @@ function isBranchAllowed(branchName) {
                 invalidBranches.push(name);
             }
         }
+        return { resolvedTargets, invalidBranches };
+    }
+
+    /** 批量中单条：失败后重新 prepare 再跑一轮 runApkPackaging（仅自动重试 1 次） */
+    async function runBatchApkOneBranchWithRetry(ctx, sessionChatId) {
+        const run = async (c) => {
+            await runApkPackaging(c);
+        };
+        try {
+            await run(ctx);
+            return;
+        } catch (firstErr) {
+            const msg0 = (firstErr && firstErr.message) || String(firstErr);
+            console.log(
+                chalk.yellow(`[批量] 分支 ${ctx.branchName} 首次失败，将重试 1 次: ${msg0}`),
+            );
+            userBotLog.append('APK', `[批量自动重试] ${ctx.branchName}: ${msg0}`);
+            const delayMs = parseInt(process.env.APK_BATCH_RETRY_DELAY_MS || '3000', 10);
+            if (Number.isFinite(delayMs) && delayMs > 0) {
+                await new Promise((r) => setTimeout(r, delayMs));
+            }
+            let ctxNext = ctx;
+            try {
+                const resolved = await resolveProjectAndBranch(ctx.branchName);
+                if (resolved) {
+                    const fresh = await prepareApkContext(resolved.project, ctx.branchName, null);
+                    ctxNext = {
+                        ...fresh,
+                        branchName: ctx.branchName,
+                        chatId: sessionChatId,
+                    };
+                }
+            } catch (reprepErr) {
+                console.log(
+                    chalk.yellow(
+                        `[批量] 重试前重新准备上下文失败，沿用原上下文再试: ${reprepErr.message}`,
+                    ),
+                );
+            }
+            await run(ctxNext);
+        }
+    }
+
+    async function runApkBatchWorkerLoop() {
+        const outcomes = new Map();
+        const orderedBranches = [];
+        let sessionChatId = null;
+
+        try {
+            while (apkBatchChunkQueue.length > 0) {
+                const chunks = [];
+                while (apkBatchChunkQueue.length > 0) {
+                    chunks.push(apkBatchChunkQueue.shift());
+                }
+
+                const newTargets = [];
+                for (const chunk of chunks) {
+                    if (sessionChatId == null) {
+                        sessionChatId = chunk.chatId;
+                    } else if (String(chunk.chatId) !== String(sessionChatId)) {
+                        console.log(
+                            chalk.yellow(
+                                '批量合并：已忽略与当前会话不同 chatId 的块（仅合并同一群内的打包APK）',
+                            ),
+                        );
+                        continue;
+                    }
+                    for (const t of chunk.resolvedTargets) {
+                        const bn = t.branchName;
+                        if (!orderedBranches.includes(bn)) {
+                            orderedBranches.push(bn);
+                            newTargets.push(t);
+                            continue;
+                        }
+                        const prev = outcomes.get(bn);
+                        if (prev === 'success') {
+                            continue;
+                        }
+                        if (prev === 'failure') {
+                            newTargets.push(t);
+                            continue;
+                        }
+                        // 已在会话中但尚无 outcome（例如仍在并发执行）：不重复入队
+                    }
+                }
+
+                if (newTargets.length === 0) {
+                    continue;
+                }
+
+                const contexts = [];
+                for (const target of newTargets) {
+                    const { project, branchName } = target;
+                    try {
+                        const ctx = await prepareApkContext(project, branchName, null);
+                        contexts.push({
+                            ...ctx,
+                            branchName,
+                            chatId: sessionChatId,
+                        });
+                    } catch (e) {
+                        console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
+                        outcomes.set(branchName, 'failure');
+                        try {
+                            await client.sendMessage(sessionChatId, {
+                                message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
+                            });
+                        } catch (err) {
+                            console.log(chalk.yellow('发送准备失败提示失败:', err.message));
+                        }
+                    }
+                }
+
+                if (contexts.length === 0) {
+                    continue;
+                }
+
+                const rawConc = parseInt(process.env.APK_MAX_CONCURRENCY || '3', 10);
+                const maxConcurrency =
+                    Number.isFinite(rawConc) && rawConc > 0 ? Math.min(rawConc, 20) : 3;
+                const queue = contexts.slice();
+                let running = 0;
+
+                await new Promise((resolve) => {
+                    const runNext = () => {
+                        if (queue.length === 0 && running === 0) {
+                            resolve();
+                            return;
+                        }
+                        while (queue.length > 0 && running < maxConcurrency) {
+                            const ctx = queue.shift();
+                            running++;
+                            (async () => {
+                                try {
+                                    await runBatchApkOneBranchWithRetry(ctx, sessionChatId);
+                                    outcomes.set(ctx.branchName, 'success');
+                                } catch (e) {
+                                    userBotLog.append(
+                                        'APK',
+                                        `批量任务失败（含 1 次自动重试） ${ctx.projectName}/${ctx.branchName}: ${(e && e.message) || e}`,
+                                    );
+                                    console.log(
+                                        chalk.red(
+                                            `❌ 批量 APK 失败 ${ctx.projectName}/${ctx.branchName}（详情见日志）`,
+                                        ),
+                                    );
+                                    outcomes.set(ctx.branchName, 'failure');
+
+                                    try {
+                                        await client.sendMessage(ctx.chatId, {
+                                            message: buildApkFailureTelegramMessage(
+                                                ctx.projectName,
+                                                ctx.branchName,
+                                                e,
+                                            ),
+                                            linkPreview: false,
+                                        });
+                                    } catch (sendErr) {
+                                        console.log(
+                                            chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message),
+                                        );
+                                    }
+                                } finally {
+                                    running--;
+                                    runNext();
+                                }
+                            })();
+                        }
+                    };
+
+                    runNext();
+                });
+            }
+
+            if (orderedBranches.length === 0 || sessionChatId == null) {
+                return;
+            }
+
+            const successList = orderedBranches.filter(b => outcomes.get(b) === 'success');
+            const failureList = orderedBranches.filter(b => outcomes.get(b) !== 'success');
+
+            const successCount = successList.length;
+            const failureCount = failureList.length;
+
+            let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
+            if (successList.length) {
+                summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+            }
+            summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
+            if (failureList.length) {
+                summaryMsg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+            }
+
+            try {
+                await client.sendMessage(sessionChatId, { message: summaryMsg, linkPreview: false });
+            } catch (e) {
+                console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
+            }
+        } finally {
+            apkBatchWorkerPromise = null;
+        }
+    }
+
+    // 批量打包：多个分支；未发汇总前再次触发「打包APK 多分支」会并入同一会话，只发一条 📊
+    async function handleBatchApkBuild(branchNames, chatId) {
+        const { resolvedTargets, invalidBranches } = await resolveApkBatchTargets(branchNames);
 
         if (invalidBranches.length > 0) {
             console.log(
@@ -2266,111 +2529,13 @@ function isBranchAllowed(branchName) {
             return;
         }
 
-        // 批量汇总：按“本次命令解析到的顺序”展示成功/失败
-        const requestedBranches = resolvedTargets.map(t => t.branchName);
-        const outcomes = new Map(); // branchName -> 'success' | 'failure'
+        apkBatchChunkQueue.push({ resolvedTargets, chatId });
 
-        // 2. 串行准备每个分支的打包上下文（避免 Git 并发冲突）
-        const contexts = [];
-        for (const target of resolvedTargets) {
-            const { project, branchName } = target;
-            try {
-                const ctx = await prepareApkContext(project, branchName, null);
-                contexts.push({
-                    ...ctx,
-                    branchName,
-                    chatId,
-                });
-            } catch (e) {
-                console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
-                outcomes.set(branchName, 'failure');
-                try {
-                    await client.sendMessage(chatId, {
-                        message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
-                    });
-                } catch (err) {
-                    console.log(chalk.yellow('发送准备失败提示失败:', err.message));
-                }
-            }
+        if (!apkBatchWorkerPromise) {
+            apkBatchWorkerPromise = runApkBatchWorkerLoop();
         }
 
-        if (contexts.length === 0) {
-            console.log(chalk.red('❌ 批量打包中所有分支上下文准备均失败'));
-            return;
-        }
-
-        // 3. 并发触发打包阶段（仅网络与文件 IO，可安全并发）
-        const rawConc = parseInt(process.env.APK_MAX_CONCURRENCY || '3', 10);
-        const maxConcurrency =
-            Number.isFinite(rawConc) && rawConc > 0 ? Math.min(rawConc, 20) : 3;
-        const queue = contexts.slice();
-        let running = 0;
-
-        await new Promise((resolve) => {
-            const runNext = () => {
-                if (queue.length === 0 && running === 0) {
-                    resolve();
-                    return;
-                }
-                while (queue.length > 0 && running < maxConcurrency) {
-                    const ctx = queue.shift();
-                    running++;
-                    (async () => {
-                        try {
-                            await runApkPackaging(ctx);
-                            outcomes.set(ctx.branchName, 'success');
-                        } catch (e) {
-                            userBotLog.append(
-                                'APK',
-                                `批量任务失败 ${ctx.projectName}/${ctx.branchName}: ${(e && e.message) || e}`,
-                            );
-                            console.log(chalk.red(`❌ 批量 APK 失败 ${ctx.projectName}/${ctx.branchName}（详情见日志）`));
-                            outcomes.set(ctx.branchName, 'failure');
-
-                            try {
-                                await client.sendMessage(ctx.chatId, {
-                                    message: buildApkFailureTelegramMessage(
-                                        ctx.projectName,
-                                        ctx.branchName,
-                                        e,
-                                    ),
-                                    linkPreview: false,
-                                });
-                            } catch (sendErr) {
-                                console.log(chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message));
-                            }
-                        } finally {
-                            running--;
-                            runNext();
-                        }
-                    })();
-                }
-            };
-
-            runNext();
-        });
-
-        // 4. 汇总：所有批量任务结束后发一次统计
-        const successList = requestedBranches.filter(b => outcomes.get(b) === 'success');
-        const failureList = requestedBranches.filter(b => outcomes.get(b) !== 'success');
-
-        const successCount = successList.length;
-        const failureCount = failureList.length;
-
-        let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
-        if (successList.length) {
-            summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-        }
-        summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
-        if (failureList.length) {
-            summaryMsg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-        }
-
-        try {
-            await client.sendMessage(chatId, { message: summaryMsg, linkPreview: false });
-        } catch (e) {
-            console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
-        }
+        await apkBatchWorkerPromise;
     }
 
     // 处理按钮 / 文本命令触发的 APK 打包 + 上传到 S3（单分支入口）
