@@ -3,11 +3,11 @@ const chalk = require('chalk');
 const fs = require('fs');
 const path = require('path');
 const { SocksProxyAgent } = require('socks-proxy-agent');
-const config = require('./lib/config');
-const apkTracker = require('./lib/apk-tracker');
-const { extractBranchNameFromFileName } = require('./lib/config-reader');
-const { handleCommand: handleBranchListCommand } = require('./lib/branch-list-store');
-const { pathInLogs, LOGS_DIR, formatLogTime } = require('./lib/app-logs');
+const config = require('./lib/core/config');
+const apkTracker = require('./lib/apk/apk-tracker');
+const { extractBranchNameFromFileName } = require('./lib/core/config-reader');
+const { handleCommand: handleBranchListCommand } = require('./lib/branch/branch-list-store');
+const { pathInLogs, LOGS_DIR, formatLogTime } = require('./lib/logging/app-logs');
 
 // 验证配置
 if (!config.botToken) {

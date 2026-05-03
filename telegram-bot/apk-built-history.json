@@ -1,0 +1,65 @@
+{
+  "WGAME-WEB|bet-365xv": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "bet-365xv",
+    "builtAt": "2026-05-03T20:07:00.713Z",
+    "branchName": "365xv",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-365xv.apk"
+  },
+  "WGAME-WEB|dy-acharpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-acharpg",
+    "builtAt": "2026-05-03T20:07:01.657Z",
+    "branchName": "dy-acharpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-acharpg.apk"
+  },
+  "WG-WEB|1x-armani": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "1x-armani",
+    "builtAt": "2026-05-03T20:09:11.829Z",
+    "branchName": "1X-Armani",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-1x-armani.apk"
+  },
+  "WG-WEB|wg-batman": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "wg-batman",
+    "builtAt": "2026-05-03T20:09:12.166Z",
+    "branchName": "wg-batman",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-batman.apk"
+  },
+  "WG-WEB|bet-84bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-84bb",
+    "builtAt": "2026-05-03T20:11:18.881Z",
+    "branchName": "84bb",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-84bb.apk"
+  },
+  "WG-WEB|win-116win": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "win-116win",
+    "builtAt": "2026-05-03T20:11:19.706Z",
+    "branchName": "116win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-win-116win.apk"
+  },
+  "WGAME-WEB|coroa-mmnnpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "coroa-mmnnpg",
+    "builtAt": "2026-05-03T20:13:32.945Z",
+    "branchName": "coroa-MMNNPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-coroa-mmnnpg.apk"
+  },
+  "WG-WEB|b98-anzolpg": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "b98-AnzolPG",
+    "builtAt": "2026-05-03T20:13:34.070Z",
+    "branchName": "AnzolPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-b98-AnzolPG.apk"
+  },
+  "WGAME-WEB|aj-aeroportopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "aj-aeroportopg",
+    "builtAt": "2026-05-03T20:14:43.045Z",
+    "branchName": "aj-aeroportopg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-aj-aeroportopg.apk"
+  }
+}

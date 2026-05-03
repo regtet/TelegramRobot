@@ -1,17 +1,17 @@
 {
   "91": {
-    "branch": "91-railingpg",
+    "branch": "91-gorillapg",
     "desc": "91系列",
     "time": [
       "02.20"
     ]
   },
   "777": {
-    "branch": "trunfo777",
+    "branch": "sentir777",
     "desc": "777系列"
   },
   "AJ": {
-    "branch": "aj-hipismopg",
+    "branch": "aj-partirpg",
     "desc": "AJ系列",
     "time": [
       "21.40"
@@ -22,50 +22,53 @@
     "desc": "KF系列"
   },
   "OKOK": {
-    "branch": "okokgpt",
+    "branch": "okoktuna",
     "desc": "OKOK系列",
     "time": [
       "18.30"
     ]
   },
   "BOI": {
-    "branch": "808boi",
+    "branch": "lilboilil-boi",
     "desc": "boi系列",
     "time": [
-      "01.45"
+      "4.13"
     ]
   },
   "KK": {
-    "branch": "pgbrkk",
+    "branch": "camerakk",
     "desc": "KK系列",
     "time": [
-      "22.00"
+      "19.00"
     ]
   },
   "EK": {
-    "branch": "ek-ondepg",
-    "desc": "ek系列"
+    "branch": "ek-parecerpg",
+    "desc": "ek系列",
+    "time": [
+      "21.20"
+    ]
   },
   "V5": {
-    "branch": "v5-mobapg",
+    "branch": "v5-pubgpg",
     "desc": "V5系列"
   },
   "MK": {
-    "branch": "mk-sgd",
+    "branch": "mk3344",
     "desc": "MK系列",
     "time": [
       "19.30"
     ]
   },
   "XW": {
-    "branch": "xw-cruzarpg",
+    "branch": "xw-penaltipg",
     "desc": "XW系列",
     "time": [
       "17.00"
     ]
   },
   "DY": {
-    "branch": "dy-figopg",
+    "branch": "dy-assinarpg",
     "desc": "DY系列",
     "time": [
       "19.30"
@@ -76,11 +79,14 @@
     "desc": "Manga系列"
   },
   "W1": {
-    "branch": "w1-linseedpg",
-    "desc": "W1系列"
+    "branch": "w1-cordialpg",
+    "desc": "W1系列",
+    "time": [
+      "3.59"
+    ]
   },
   "VOY": {
-    "branch": "voy-notepadpg",
+    "branch": "voy-petshoppg",
     "desc": "VOY系列",
     "time": [
       "04.00"
@@ -102,7 +108,7 @@
     "desc": "A8系列"
   },
   "888Equipe": {
-    "branch": "458win",
+    "branch": "478win",
     "desc": "888Equipe系列"
   },
   "POP": {
@@ -114,7 +120,7 @@
     "desc": "7K系列"
   },
   "777CLUB": {
-    "branch": "327win",
+    "branch": "347win",
     "desc": "777CLUB系列",
     "time": [
       "19.00"
@@ -137,11 +143,11 @@
     "desc": "BR系列"
   },
   "CL": {
-    "branch": "pomarpgcl",
+    "branch": "cosmospgcl",
     "desc": "CL系列"
   },
   "COROA皇冠": {
-    "branch": "coroa-ccuupg",
+    "branch": "coroa-jjzzbet",
     "desc": "COROA皇冠系列"
   },
   "HMS": {
@@ -152,7 +158,7 @@
     ]
   },
   "WP白版": {
-    "branch": "wp-comporpg",
+    "branch": "wp-placapg",
     "desc": "WP白版系列"
   },
   "FA8": {
@@ -167,11 +173,11 @@
     "desc": "FA8白版系列"
   },
   "FP": {
-    "branch": "FP-LOBOpg",
+    "branch": "FP-lynxpg",
     "desc": "FP系列"
   },
   "TY": {
-    "branch": "ty-typgpg",
+    "branch": "ty-mmppty",
     "desc": "TY系列"
   },
   "BET经典版": {
@@ -181,5 +187,9 @@
   "BOI白版": {
     "branch": "bbqboi",
     "desc": "BOI白版系列"
+  },
+  "FA": {
+    "branch": "fa-vaga777",
+    "desc": "FA系列"
   }
 }

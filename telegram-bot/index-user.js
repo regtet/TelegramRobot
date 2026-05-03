@@ -7,7 +7,11 @@ const path = require('path');
 const dotenv = require('dotenv');
 const chalk = require('chalk');
 const axios = require('axios');
-const apkTracker = require('./lib/apk-tracker');
+const apkTracker = require('./lib/apk/apk-tracker');
+const apkBuiltHistory = require('./lib/apk/apk-built-history');
+const branchGroupAutoParse = require('./lib/branch/branch-group-auto-parse');
+const { updateSeriesBranch } = require('./lib/branch/branch-list-store');
+const branchPackageExpect = require('./lib/branch/branch-package-expect');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const { spawn } = require('child_process');
@@ -21,11 +25,11 @@ const PACK_SERVER_PROXY = {
     port: 7890,
 };
 
-const config = require('./lib/config');
-const Builder = require('./lib/builder');
-const FileSplitter = require('./lib/file-splitter');
-const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./lib/config-reader');
-const userBotLog = require('./lib/user-bot-logger');
+const config = require('./lib/core/config');
+const Builder = require('./lib/build/builder');
+const FileSplitter = require('./lib/build/file-splitter');
+const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./lib/core/config-reader');
+const userBotLog = require('./lib/logging/user-bot-logger');
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
@@ -152,7 +156,7 @@ let currentApkBuildProjectName = '';
 let currentApkBuildChatId = null;
 
 // 多分支「打包APK a b c」合并：未发汇总前再次触发会并入同一会话，只发一条 📊 统计
-let apkBatchChunkQueue = []; // { resolvedTargets, chatId }[]
+let apkBatchChunkQueue = []; // { resolvedTargets, chatId, applyApkBuiltDedup? }[]
 let apkBatchWorkerPromise = null;
 
 // 文件处理队列
@@ -161,6 +165,9 @@ let fileProcessQueue = []; // 文件处理排队列表
 
 // APK 按钮选择缓存：分支 -> { packageId, appName }
 const pendingApkOptions = new Map();
+
+// 群内「仅一行域名」按发送者缓存：「chatId:senderId」-> { hostRoot }，仅与同一人下一条「复刻台」公告配对
+const lastSeriesDomainBySender = new Map();
 
 // 检查用户权限
 function isUserAllowed(userId) {
@@ -212,6 +219,50 @@ function isBranchAllowed(branchName) {
     console.log(chalk.gray(`详细运行日志目录: ${userBotLog.LOGS_DIR}（user-bot.log 等）\n`));
     userBotLog.initOnStartup();
 
+    /**
+     * Promise 超时：避免 Telegram sendFile / 某分支整链永久挂起，占满批量 APK 的并发槽导致整批停滞。
+     * 超时后 race 已结束，但底层 GramJS 请求可能仍在进行（无法强制中止），仅释放调度上的等待。
+     */
+    async function withTimeout(promise, ms, errLabel) {
+        const n = Number(ms);
+        if (!Number.isFinite(n) || n <= 0) {
+            return promise;
+        }
+        let timer;
+        const timeoutPromise = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                reject(new Error(`${errLabel || '操作'}超时（>${Math.round(n / 1000)}s）`));
+            }, n);
+        });
+        try {
+            return await Promise.race([promise, timeoutPromise]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    const TELEGRAM_SEND_FILE_TIMEOUT_MS = parseInt(
+        process.env.TELEGRAM_SEND_FILE_TIMEOUT_MS || String(8 * 60 * 1000),
+        10,
+    );
+    const TELEGRAM_SEND_MESSAGE_TIMEOUT_MS = parseInt(
+        process.env.TELEGRAM_SEND_MESSAGE_TIMEOUT_MS || String(120000),
+        10,
+    );
+    /** 单分支从 pack 到发群整条链的上限（含轮询 list、下载、S3、Telegram），默认 55 分钟 */
+    const APK_BRANCH_TOTAL_TIMEOUT_MS = parseInt(
+        process.env.APK_BRANCH_TOTAL_TIMEOUT_MS || String(55 * 60 * 1000),
+        10,
+    );
+    /**
+     * 从打包机下载 APK 整段（含多次重试）的上限。避免 axios 流极慢/半开连接永不触发单次 timeout，
+     * 导致某分支永久占住批量并发槽、queue 已空但 running≠0、整批无法结束（见 alfa-suer777 类现场）。
+     */
+    const APK_DOWNLOAD_TOTAL_TIMEOUT_MS = parseInt(
+        process.env.APK_DOWNLOAD_TOTAL_TIMEOUT_MS || String(12 * 60 * 1000),
+        10,
+    );
+
     /** 并发批量打包时合并对打包服务 /list 的并发请求（共用同一 in-flight Promise） */
     let packServerListInflight = null;
     async function fetchPackServerFileList() {
@@ -241,7 +292,9 @@ function isBranchAllowed(branchName) {
     function inferApkFailureStage(error) {
         const m = (error && error.message) || String(error);
         if (/S3|AWS|amazonaws|PutObject|上传到 S3|socket hang up|TimeoutError/i.test(m)) return '上传 S3';
+        if (/Telegram sendFile|Telegram sendMessage|Telegram 通知失败|整链超时/i.test(m)) return 'Telegram 发群';
         if (/未找到已打包|打包结果|\/list|访问 \/list/i.test(m)) return '等待打包结果';
+        if (/下载 APK.*超时|下载.*超时/i.test(m)) return '下载 APK';
         if (/下载 APK|download/i.test(m)) return '下载 APK';
         if (/Logo|gulu_top/i.test(m)) return 'Logo 处理';
         if (/切换分支|checkout|git/i.test(m)) return 'Git 分支';
@@ -437,7 +490,7 @@ function isBranchAllowed(branchName) {
                 }
 
                 console.log(chalk.cyan(`收到按钮：打包 APK - 分支 ${branchNameForApk}`));
-                await enqueueApkBuild(branchNameForApk, message.chatId);
+                await enqueueApkBuild(branchNameForApk, message.chatId, { applyApkBuiltDedup: false });
                 return;
             }
 
@@ -512,14 +565,16 @@ function isBranchAllowed(branchName) {
 
                 console.log(chalk.cyan(`收到打包APK 命令，分支: ${apkBranchNames.join(', ')}`));
 
+                const applyApkBuiltDedup = await isApkPackTriggerFromBot(message);
+
                 // 单分支走 APK 队列入口，避免触发批量统计；多分支仍走批量流程
                 if (apkBranchNames.length === 1) {
-                    await enqueueApkBuild(apkBranchNames[0], message.chatId);
+                    await enqueueApkBuild(apkBranchNames[0], message.chatId, { applyApkBuiltDedup });
                     return;
                 }
 
                 // 批量打包：先依次准备每个分支的配置与 Logo，再并发触发打包接口 + 下载 + 上传
-                await handleBatchApkBuild(apkBranchNames, message.chatId);
+                await handleBatchApkBuild(apkBranchNames, message.chatId, applyApkBuiltDedup);
                 return;
             }
 
@@ -625,6 +680,68 @@ function isBranchAllowed(branchName) {
                     }
                 })();
                 return;
+            }
+
+            // 群内自动更新 branchList：上一条单行域名 + 本条「{系列} 复刻台 分包ID … + 域名列表」公告
+            if (process.env.ENABLE_AUTO_BRANCHLIST_FROM_GROUP !== '0') {
+                const senderCacheKey = `${message.chatId.toString()}:${senderId || '0'}`;
+
+                if (branchGroupAutoParse.isSingleLineDomainOnlyMessage(trimmedText)) {
+                    const root = branchGroupAutoParse.extractHostRootFromDomainLine(trimmedText);
+                    if (root) {
+                        lastSeriesDomainBySender.set(senderCacheKey, { hostRoot: root });
+                    }
+                } else {
+                    const prev = lastSeriesDomainBySender.get(senderCacheKey);
+                    const prevRoot = prev && prev.hostRoot ? prev.hostRoot : null;
+                    const parsed = branchGroupAutoParse.tryParseSeriesAnnounceForBranchUpdate(
+                        trimmedText,
+                        prevRoot,
+                    );
+                    if (parsed) {
+                        try {
+                            if (parsed.packageId != null && String(parsed.packageId).trim() !== '') {
+                                branchPackageExpect.setFromAnnounce(parsed.branch, {
+                                    packageId: parsed.packageId,
+                                    series: parsed.seriesToken,
+                                });
+                            }
+                        } catch (expectErr) {
+                            console.log(chalk.yellow('写入群内分包期望失败:', expectErr.message));
+                        }
+
+                        const timeTok = branchGroupAutoParse.unixSecondsToBranchTimeTokens(message.date);
+                        const res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
+                        lastSeriesDomainBySender.delete(senderCacheKey);
+                        try {
+                            if (res.ok) {
+                                console.log(
+                                    chalk.green(
+                                        `[系列分支] 已写入 branchList：${res.canonical} -> ${parsed.branch}`,
+                                    ),
+                                );
+                            } else if (res.reason === 'unknown_series') {
+                                await client.sendMessage(message.chatId, {
+                                    message:
+                                        `⚠️ 已识别为系列更新公告，但 branchList 中无「${parsed.seriesToken}」系列，未写入。\n` +
+                                        `解析得到分支名: ${parsed.branch}`,
+                                    linkPreview: false,
+                                });
+                            } else {
+                                await client.sendMessage(message.chatId, {
+                                    message:
+                                        `⚠️ 系列分支未更新（${res.reason || '未知原因'}），解析分支名: ${parsed.branch}`,
+                                    linkPreview: false,
+                                });
+                            }
+                        } catch (sendErr) {
+                            console.log(
+                                chalk.yellow('发送系列分支自动更新结果失败:', sendErr.message),
+                            );
+                        }
+                        return;
+                    }
+                }
             }
 
             // 检查是否以"打包"开头
@@ -1030,6 +1147,11 @@ function isBranchAllowed(branchName) {
                         });
                         msg = msg.trimEnd();
                     }
+
+                    msg += branchPackageExpect.buildExpectationWarnings(actualBranchName, {
+                        packageId: result.packageId,
+                        debug: result.debug,
+                    });
 
                     console.log(
                         chalk.green(
@@ -1489,6 +1611,11 @@ function isBranchAllowed(branchName) {
                             });
                         }
                     }
+
+                    msg += branchPackageExpect.buildExpectationWarnings(result.branchName, {
+                        packageId: result.packageId,
+                        debug: result.debug,
+                    });
                 } else {
                     msg += `📁 项目        : ${result.projectName}\n`;
                     msg += `🌿 分支        : ${result.branchName}\n`;
@@ -1670,8 +1797,19 @@ function isBranchAllowed(branchName) {
         throw new Error(`切换分支失败: ${errorMsg}`);
     }
 
-    // 将 APK 打包任务加入队列，按顺序执行（按钮、文本命令、压缩包自动触发共用）
-    async function enqueueApkBuild(branchName, chatId) {
+    /** 群内由「打包机器人」账号发出的「打包APK」视为自动任务（如凌晨 /apk_start_all），才做 APK 去重 */
+    async function isApkPackTriggerFromBot(message) {
+        if (!message || message.senderId == null) return false;
+        try {
+            const ent = await client.getEntity(message.senderId);
+            return Boolean(ent && ent.className === 'User' && ent.bot);
+        } catch {
+            return false;
+        }
+    }
+
+    // 将 APK 打包任务加入队列，按顺序执行（按钮、文本命令、Bot 代发的打包APK 等）
+    async function enqueueApkBuild(branchName, chatId, { applyApkBuiltDedup = false } = {}) {
         // 先解析项目和实际分支名，用于后续统一去重与展示
         let displayProject = '未知项目';
         let displayBranch = branchName;
@@ -1750,6 +1888,7 @@ function isBranchAllowed(branchName) {
             displayBranch,
             chatId,
             projectName: displayProject,
+            applyApkBuiltDedup,
         });
 
         console.log(chalk.cyan(`📋 APK 打包加入队列: [${displayProject}] ${displayBranch}`));
@@ -1772,7 +1911,9 @@ function isBranchAllowed(branchName) {
         console.log(chalk.cyan(`\n📋 处理 APK 队列任务: [${currentApkBuildProjectName}] ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
 
         try {
-            await triggerApkBuildForBranch(task.branchName, task.chatId, null);
+            await triggerApkBuildForBranch(task.branchName, task.chatId, null, {
+                applyApkBuiltDedup: Boolean(task.applyApkBuiltDedup),
+            });
         } catch (error) {
             userBotLog.append('QUEUE', `APK 队列任务失败: ${(error && error.message) || error}`);
             console.log(chalk.red('❌ APK 队列任务失败（详情见日志）'));
@@ -1787,7 +1928,7 @@ function isBranchAllowed(branchName) {
     }
 
     // 统一触发 APK 打包的入口（由队列处理器调用，或单次直接调用）
-    async function triggerApkBuildForBranch(branchName, chatId, existingStatusMsgId) {
+    async function triggerApkBuildForBranch(branchName, chatId, existingStatusMsgId, extra = {}) {
         // 先在 WG-WEB / WGAME-WEB 中解析出实际项目和分支名
         let resolved;
         try {
@@ -1817,6 +1958,7 @@ function isBranchAllowed(branchName) {
             appNameSlug: null,
             primaryDomain: null,
             statusMsgId,
+            applyApkBuiltDedup: Boolean(extra && extra.applyApkBuiltDedup),
         };
 
         await handleBuildApkForBranch(project, actualBranchName, chatId, options);
@@ -2159,8 +2301,28 @@ function isBranchAllowed(branchName) {
 
         const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
         console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
+        userBotLog.append('DOWNLOAD', `整段限时开始 ${branchName} -> ${apkFileNameFromServer}`);
 
-        await downloadFileWithRetry(downloadUrl, localApkPath, 12, 15000);
+        try {
+            await withTimeout(
+                downloadFileWithRetry(downloadUrl, localApkPath, 12, 15000),
+                APK_DOWNLOAD_TOTAL_TIMEOUT_MS,
+                `下载 APK ${branchName}`,
+            );
+        } catch (dlErr) {
+            userBotLog.append(
+                'DOWNLOAD',
+                `整段失败/超时 ${branchName}: ${(dlErr && dlErr.message) || dlErr}`,
+            );
+            try {
+                if (fs.existsSync(localApkPath)) {
+                    fs.unlinkSync(localApkPath);
+                }
+            } catch {
+                // 忽略
+            }
+            throw dlErr;
+        }
 
         const s3Key = appName || apkFileNameFromServer;
 
@@ -2195,13 +2357,18 @@ function isBranchAllowed(branchName) {
             `APK地址: ${apkUrl}`;
 
         try {
+            userBotLog.append('APK', `Telegram 发群开始 ${branchName}`);
             let sentWithLogo = false;
             if (logoLocalPath && fs.existsSync(logoLocalPath)) {
-                await client.sendFile(chatId, {
-                    file: logoLocalPath,
-                    caption: msg,
-                    forceDocument: true,
-                });
+                await withTimeout(
+                    client.sendFile(chatId, {
+                        file: logoLocalPath,
+                        caption: msg,
+                        forceDocument: true,
+                    }),
+                    TELEGRAM_SEND_FILE_TIMEOUT_MS,
+                    `Telegram sendFile(Logo) 分支 ${branchName}`,
+                );
                 sentWithLogo = true;
             } else if (logoInfo && logoInfo.url) {
                 // 本地 PNG 已被删或并发冲突时，用已上传 S3 的 Logo 拉取后再发，避免只有文字
@@ -2218,11 +2385,15 @@ function isBranchAllowed(branchName) {
                     );
                     fs.writeFileSync(tmpSendPath, buf);
                     try {
-                        await client.sendFile(chatId, {
-                            file: tmpSendPath,
-                            caption: msg,
-                            forceDocument: true,
-                        });
+                        await withTimeout(
+                            client.sendFile(chatId, {
+                                file: tmpSendPath,
+                                caption: msg,
+                                forceDocument: true,
+                            }),
+                            TELEGRAM_SEND_FILE_TIMEOUT_MS,
+                            `Telegram sendFile(Logo缓存) 分支 ${branchName}`,
+                        );
                         sentWithLogo = true;
                     } finally {
                         try {
@@ -2246,7 +2417,11 @@ function isBranchAllowed(branchName) {
                 );
             }
             if (!sentWithLogo) {
-                await client.sendMessage(chatId, { message: msg, linkPreview: false });
+                await withTimeout(
+                    client.sendMessage(chatId, { message: msg, linkPreview: false }),
+                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                    `Telegram sendMessage 分支 ${branchName}`,
+                );
             }
             try {
                 apkTracker.remove(branchName);
@@ -2254,8 +2429,20 @@ function isBranchAllowed(branchName) {
             } catch (rmErr) {
                 console.log(chalk.yellow('更新 apk-pending.json 失败（可忽略）:', rmErr.message));
             }
+            userBotLog.append('APK', `Telegram 发群完成 ${branchName}`);
+            try {
+                apkBuiltHistory.recordBuilt(projectName, appNameSlug, {
+                    branchName,
+                    s3Url: apkUrl,
+                });
+            } catch (histErr) {
+                console.log(chalk.yellow('写入 apk-built-history 失败（可忽略）:', histErr.message));
+            }
         } catch (e) {
-            console.log(chalk.yellow('发送 APK 结果消息失败:', e.message));
+            const errMsg = (e && e.message) || String(e);
+            console.log(chalk.yellow('发送 APK 结果消息失败:', errMsg));
+            userBotLog.append('APK', `Telegram 通知失败 ${branchName}: ${errMsg}`);
+            throw e;
         } finally {
             try {
                 if (fs.existsSync(localApkPath)) {
@@ -2355,6 +2542,7 @@ function isBranchAllowed(branchName) {
                 }
 
                 const newTargets = [];
+                let sessionApplyApkDedup = false;
                 for (const chunk of chunks) {
                     if (sessionChatId == null) {
                         sessionChatId = chunk.chatId;
@@ -2365,6 +2553,9 @@ function isBranchAllowed(branchName) {
                             ),
                         );
                         continue;
+                    }
+                    if (chunk.applyApkBuiltDedup) {
+                        sessionApplyApkDedup = true;
                     }
                     for (const t of chunk.resolvedTargets) {
                         const bn = t.branchName;
@@ -2394,6 +2585,29 @@ function isBranchAllowed(branchName) {
                     const { project, branchName } = target;
                     try {
                         const ctx = await prepareApkContext(project, branchName, null);
+                        if (
+                            sessionApplyApkDedup &&
+                            apkBuiltHistory.wasAlreadyBuilt(ctx.projectName, ctx.appNameSlug)
+                        ) {
+                            outcomes.set(branchName, 'skipped');
+                            const slug = String(ctx.appNameSlug || '').toLowerCase();
+                            try {
+                                await withTimeout(
+                                    client.sendMessage(sessionChatId, {
+                                        message:
+                                            `ℹ️ [批量] 该 APK 已成功打包过，已跳过（自动任务去重）\n\n` +
+                                            `🌿 分支: ${branchName}\n` +
+                                            `📱 app-${slug}.apk（${ctx.projectName}）`,
+                                        linkPreview: false,
+                                    }),
+                                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                    `Telegram sendMessage(批量跳过已打包) ${branchName}`,
+                                );
+                            } catch (skErr) {
+                                console.log(chalk.yellow('发送批量跳过提示失败:', skErr.message));
+                            }
+                            continue;
+                        }
                         contexts.push({
                             ...ctx,
                             branchName,
@@ -2403,9 +2617,13 @@ function isBranchAllowed(branchName) {
                         console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
                         outcomes.set(branchName, 'failure');
                         try {
-                            await client.sendMessage(sessionChatId, {
-                                message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
-                            });
+                            await withTimeout(
+                                client.sendMessage(sessionChatId, {
+                                    message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
+                                }),
+                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                'Telegram sendMessage(准备失败)',
+                            );
                         } catch (err) {
                             console.log(chalk.yellow('发送准备失败提示失败:', err.message));
                         }
@@ -2416,9 +2634,10 @@ function isBranchAllowed(branchName) {
                     continue;
                 }
 
-                const rawConc = parseInt(process.env.APK_MAX_CONCURRENCY || '3', 10);
+                // 默认 2：同一 GramJS 客户端并发多路 sendFile 易触发 updates TIMEOUT 与整批卡死
+                const rawConc = parseInt(process.env.APK_MAX_CONCURRENCY || '2', 10);
                 const maxConcurrency =
-                    Number.isFinite(rawConc) && rawConc > 0 ? Math.min(rawConc, 20) : 3;
+                    Number.isFinite(rawConc) && rawConc > 0 ? Math.min(rawConc, 20) : 2;
                 const queue = contexts.slice();
                 let running = 0;
 
@@ -2433,7 +2652,11 @@ function isBranchAllowed(branchName) {
                             running++;
                             (async () => {
                                 try {
-                                    await runBatchApkOneBranchWithRetry(ctx, sessionChatId);
+                                    await withTimeout(
+                                        runBatchApkOneBranchWithRetry(ctx, sessionChatId),
+                                        APK_BRANCH_TOTAL_TIMEOUT_MS,
+                                        `分支 ${ctx.branchName} APK 整链`,
+                                    );
                                     outcomes.set(ctx.branchName, 'success');
                                 } catch (e) {
                                     userBotLog.append(
@@ -2448,14 +2671,18 @@ function isBranchAllowed(branchName) {
                                     outcomes.set(ctx.branchName, 'failure');
 
                                     try {
-                                        await client.sendMessage(ctx.chatId, {
-                                            message: buildApkFailureTelegramMessage(
-                                                ctx.projectName,
-                                                ctx.branchName,
-                                                e,
-                                            ),
-                                            linkPreview: false,
-                                        });
+                                        await withTimeout(
+                                            client.sendMessage(ctx.chatId, {
+                                                message: buildApkFailureTelegramMessage(
+                                                    ctx.projectName,
+                                                    ctx.branchName,
+                                                    e,
+                                                ),
+                                                linkPreview: false,
+                                            }),
+                                            TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                            `Telegram sendMessage(批量失败) ${ctx.branchName}`,
+                                        );
                                     } catch (sendErr) {
                                         console.log(
                                             chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message),
@@ -2478,14 +2705,22 @@ function isBranchAllowed(branchName) {
             }
 
             const successList = orderedBranches.filter(b => outcomes.get(b) === 'success');
-            const failureList = orderedBranches.filter(b => outcomes.get(b) !== 'success');
+            const skippedList = orderedBranches.filter(b => outcomes.get(b) === 'skipped');
+            const failureList = orderedBranches.filter(
+                b => outcomes.get(b) !== 'success' && outcomes.get(b) !== 'skipped',
+            );
 
             const successCount = successList.length;
             const failureCount = failureList.length;
+            const skippedCount = skippedList.length;
 
             let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
             if (successList.length) {
                 summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+            }
+            summaryMsg += `\n\n⏭ 跳过（曾成功打包） ${skippedCount} 条`;
+            if (skippedList.length) {
+                summaryMsg += '\n' + skippedList.map((b, i) => `${i + 1}. ${b}`).join('\n');
             }
             summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
             if (failureList.length) {
@@ -2493,7 +2728,11 @@ function isBranchAllowed(branchName) {
             }
 
             try {
-                await client.sendMessage(sessionChatId, { message: summaryMsg, linkPreview: false });
+                await withTimeout(
+                    client.sendMessage(sessionChatId, { message: summaryMsg, linkPreview: false }),
+                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                    'Telegram sendMessage(批量汇总)',
+                );
             } catch (e) {
                 console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
             }
@@ -2503,7 +2742,7 @@ function isBranchAllowed(branchName) {
     }
 
     // 批量打包：多个分支；未发汇总前再次触发「打包APK 多分支」会并入同一会话，只发一条 📊
-    async function handleBatchApkBuild(branchNames, chatId) {
+    async function handleBatchApkBuild(branchNames, chatId, applyApkBuiltDedup = false) {
         const { resolvedTargets, invalidBranches } = await resolveApkBatchTargets(branchNames);
 
         if (invalidBranches.length > 0) {
@@ -2529,7 +2768,7 @@ function isBranchAllowed(branchName) {
             return;
         }
 
-        apkBatchChunkQueue.push({ resolvedTargets, chatId });
+        apkBatchChunkQueue.push({ resolvedTargets, chatId, applyApkBuiltDedup });
 
         if (!apkBatchWorkerPromise) {
             apkBatchWorkerPromise = runApkBatchWorkerLoop();
@@ -2539,7 +2778,12 @@ function isBranchAllowed(branchName) {
     }
 
     // 处理按钮 / 文本命令触发的 APK 打包 + 上传到 S3（单分支入口）
-    async function handleBuildApkForBranch(project, branchName, chatId, { packageId, appName, appNameSlug, primaryDomain, statusMsgId }) {
+    async function handleBuildApkForBranch(
+        project,
+        branchName,
+        chatId,
+        { packageId, appName, appNameSlug, primaryDomain, statusMsgId, applyApkBuiltDedup = false },
+    ) {
         console.log(chalk.cyan(`\n🚀 开始为项目 ${project.name} 的分支 ${branchName} 打包 APK`));
 
         try {
@@ -2558,6 +2802,30 @@ function isBranchAllowed(branchName) {
                 statusMsgId,
             };
 
+            if (
+                applyApkBuiltDedup &&
+                apkBuiltHistory.wasAlreadyBuilt(merged.projectName, merged.appNameSlug)
+            ) {
+                const slug = String(merged.appNameSlug || '').toLowerCase();
+                try {
+                    await withTimeout(
+                        client.sendMessage(chatId, {
+                            message:
+                                `ℹ️ 该 APK 已成功打包过，本次跳过（自动任务去重）\n\n` +
+                                `📁 项目: ${merged.projectName}\n` +
+                                `🌿 分支: ${branchName}\n` +
+                                `📱 目标包: app-${slug}.apk`,
+                            linkPreview: false,
+                        }),
+                        TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                        `Telegram sendMessage(APK 已打包跳过) ${branchName}`,
+                    );
+                } catch (skipSendErr) {
+                    console.log(chalk.yellow('发送「APK 已打包跳过」失败:', skipSendErr.message));
+                }
+                return;
+            }
+
             await runApkPackaging(merged);
         } catch (error) {
             const safeProjectName = project && project.name ? project.name : '未知项目';
@@ -2568,10 +2836,14 @@ function isBranchAllowed(branchName) {
             console.log(chalk.red(`❌ APK 打包失败 ${safeProjectName}/${branchName}（详情见日志）`));
 
             try {
-                await client.sendMessage(chatId, {
-                    message: buildApkFailureTelegramMessage(safeProjectName, branchName, error),
-                    linkPreview: false,
-                });
+                await withTimeout(
+                    client.sendMessage(chatId, {
+                        message: buildApkFailureTelegramMessage(safeProjectName, branchName, error),
+                        linkPreview: false,
+                    }),
+                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                    `Telegram sendMessage(单分支失败) ${branchName}`,
+                );
             } catch (e) {
                 console.log(chalk.yellow('发送 APK 失败结果消息失败:', e.message));
             }

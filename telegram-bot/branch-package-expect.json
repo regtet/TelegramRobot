@@ -1,0 +1,16 @@
+{
+  "w1-cordialpg": {
+    "branch": "w1-cordialpg",
+    "packageId": "11",
+    "series": "W1",
+    "updatedAt": "2026-05-03T19:59:07.522Z",
+    "source": "group_announce"
+  },
+  "lilboilil-boi": {
+    "branch": "lilboilil-boi",
+    "packageId": "27",
+    "series": "BOI",
+    "updatedAt": "2026-05-03T20:13:31.372Z",
+    "source": "group_announce"
+  }
+}

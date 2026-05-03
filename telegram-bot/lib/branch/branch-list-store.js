@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_FILE = path.join(__dirname, '..', 'branchList.json');
+const DATA_FILE = path.join(__dirname, '..', '..', 'branchList.json');
 
 function ensureDataShape(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -193,8 +193,38 @@ function handleCommand(text) {
     return `已删除 ${canonicalKey}`;
 }
 
+/**
+ * 根据群内自动识别结果更新已有系列的 branch / time（不新增未知系列）。
+ * @param {string} seriesKeyRaw 如 XW、xw
+ * @param {string} newBranch 新分支名
+ * @param {string[]} timeTokens 可选，如 ['17.30']；不传则不改 time
+ * @returns {{ ok: boolean, reason?: string, canonical?: string }}
+ */
+function updateSeriesBranch(seriesKeyRaw, newBranch, timeTokens) {
+    const branch = (newBranch || '').trim();
+    if (!branch) {
+        return { ok: false, reason: 'empty_branch' };
+    }
+    const data = readData();
+    const canonical = resolveCanonicalKey(data, seriesKeyRaw);
+    if (!canonical) {
+        return { ok: false, reason: 'unknown_series', key: normalizeKey(seriesKeyRaw) };
+    }
+    data[canonical].branch = branch;
+    if (Array.isArray(timeTokens) && timeTokens.length > 0) {
+        const normalized = normalizeTimes(timeTokens);
+        if (normalized.some((token) => !isValidTimeToken(token))) {
+            return { ok: false, reason: 'invalid_time' };
+        }
+        data[canonical].time = normalized;
+    }
+    writeData(data);
+    return { ok: true, canonical };
+}
+
 module.exports = {
     readData,
     writeData,
     handleCommand,
+    updateSeriesBranch,
 };

@@ -15,7 +15,7 @@ class Builder {
   constructor(projectPath, config) {
     this.projectPath = path.isAbsolute(projectPath)
       ? path.resolve(projectPath)
-      : path.resolve(__dirname, '..', projectPath);
+      : path.resolve(__dirname, '..', '..', projectPath);
     this.config = config;
   }
 
@@ -337,7 +337,7 @@ class Builder {
     }
 
     // 创建 builds 目录
-    const buildsDir = path.resolve(__dirname, this.config.zipOutputPath);
+    const buildsDir = path.resolve(__dirname, '..', '..', this.config.zipOutputPath);
     if (!fs.existsSync(buildsDir)) {
       fs.mkdirSync(buildsDir, { recursive: true });
     }

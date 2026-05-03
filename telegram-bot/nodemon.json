@@ -8,6 +8,8 @@
   "ignore": [
     "session.txt",
     "apk-pending.json",
+    "apk-built-history.json",
+    "branch-package-expect.json",
     "branchList.json",
     "logs",
     "tmp",
