@@ -12,5 +12,68 @@
     "series": "BOI",
     "updatedAt": "2026-05-03T20:13:31.372Z",
     "source": "group_announce"
+  },
+  "hms-iake": {
+    "branch": "hms-iake",
+    "packageId": "15",
+    "series": "HMS",
+    "updatedAt": "2026-05-04T14:38:35.909Z",
+    "source": "group_announce"
+  },
+  "liqueurpgvoy-liqueur-pg": {
+    "branch": "liqueurpgvoy-liqueur-pg",
+    "packageId": "18",
+    "series": "VOY",
+    "updatedAt": "2026-05-05T19:55:20.505Z",
+    "source": "group_announce"
+  },
+  "sonharkksonhar-kk": {
+    "branch": "sonharkksonhar-kk",
+    "packageId": "4",
+    "series": "KK",
+    "updatedAt": "2026-05-06T09:06:25.341Z",
+    "source": "group_announce"
+  },
+  "3365mk": {
+    "branch": "3365mk",
+    "packageId": "3",
+    "series": "MK",
+    "updatedAt": "2026-05-06T12:04:26.973Z",
+    "source": "group_announce"
+  },
+  "okokmixue": {
+    "branch": "okokmixue",
+    "packageId": "7",
+    "series": "OKOK",
+    "updatedAt": "2026-05-06T12:11:02.188Z",
+    "source": "group_announce"
+  },
+  "cantinapg": {
+    "branch": "cantinapg",
+    "packageId": "14",
+    "series": "WP",
+    "updatedAt": "2026-05-06T12:51:56.473Z",
+    "source": "group_announce"
+  },
+  "www.revistapg": {
+    "branch": "www.revistapg",
+    "packageId": "2",
+    "series": "DY",
+    "updatedAt": "2026-05-06T13:19:58.245Z",
+    "source": "group_announce"
+  },
+  "citroenpg": {
+    "branch": "citroenpg",
+    "packageId": "14",
+    "series": "91",
+    "updatedAt": "2026-05-06T17:49:30.150Z",
+    "source": "group_announce"
+  },
+  "stylistpg": {
+    "branch": "stylistpg",
+    "packageId": "13",
+    "series": "A8",
+    "updatedAt": "2026-05-06T19:58:14.293Z",
+    "source": "group_announce"
   }
 }

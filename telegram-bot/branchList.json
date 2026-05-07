@@ -1,9 +1,9 @@
 {
   "91": {
-    "branch": "91-gorillapg",
+    "branch": "citroenpg",
     "desc": "91系列",
     "time": [
-      "02.20"
+      "1.49"
     ]
   },
   "777": {
@@ -22,24 +22,24 @@
     "desc": "KF系列"
   },
   "OKOK": {
-    "branch": "okoktuna",
+    "branch": "okokmixue",
     "desc": "OKOK系列",
     "time": [
-      "18.30"
+      "20.11"
     ]
   },
   "BOI": {
-    "branch": "lilboilil-boi",
+    "branch": "lilboi",
     "desc": "boi系列",
     "time": [
       "4.13"
     ]
   },
   "KK": {
-    "branch": "camerakk",
+    "branch": "sonharkk",
     "desc": "KK系列",
     "time": [
-      "19.00"
+      "17.06"
     ]
   },
   "EK": {
@@ -54,10 +54,10 @@
     "desc": "V5系列"
   },
   "MK": {
-    "branch": "mk3344",
+    "branch": "3365mk",
     "desc": "MK系列",
     "time": [
-      "19.30"
+      "20.04"
     ]
   },
   "XW": {
@@ -68,10 +68,10 @@
     ]
   },
   "DY": {
-    "branch": "dy-assinarpg",
+    "branch": "www.revistapg",
     "desc": "DY系列",
     "time": [
-      "19.30"
+      "21.19"
     ]
   },
   "MANGA": {
@@ -86,10 +86,10 @@
     ]
   },
   "VOY": {
-    "branch": "voy-petshoppg",
+    "branch": "liqueurpg",
     "desc": "VOY系列",
     "time": [
-      "04.00"
+      "3.55"
     ]
   },
   "WE": {
@@ -104,8 +104,11 @@
     "desc": "dz系列"
   },
   "A8": {
-    "branch": "a8-marbledpg",
-    "desc": "A8系列"
+    "branch": "stylistpg",
+    "desc": "A8系列",
+    "time": [
+      "3.58"
+    ]
   },
   "888Equipe": {
     "branch": "478win",
@@ -151,10 +154,10 @@
     "desc": "COROA皇冠系列"
   },
   "HMS": {
-    "branch": "hms-eaglepg",
+    "branch": "hms-iake",
     "desc": "HMS系列",
     "time": [
-      "22.00"
+      "22.38"
     ]
   },
   "WP白版": {

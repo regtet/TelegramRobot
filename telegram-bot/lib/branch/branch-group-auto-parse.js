@@ -14,7 +14,10 @@ function extractHostRootFromDomainLine(line) {
         .trim();
     const t = stripped.toLowerCase();
     const m = t.match(/^([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*)\.[a-z]{2,}$/i);
-    return m ? m[1] : null;
+    if (!m) return null;
+    const hostRoot = m[1];
+    // 群公告里常出现 www.xxx.com，这里统一去掉 www. 前缀，避免写入 branchList 时污染分支名
+    return hostRoot.startsWith('www.') ? hostRoot.slice(4) : hostRoot;
 }
 
 function lineLooksLikeBackup(line) {
@@ -49,12 +52,18 @@ function normalizeSeriesKeyForStore(upperToken) {
 }
 
 /**
- * 解析「{token} 复刻台 分包ID {n}」行：首词为系列，分包 ID 为数字
+ * 解析「{token} 复刻台 分包ID {n}」行：首词为系列，分包 ID 为数字。
+ * 支持「分包ID」与「分包 ID」两种写法。
  */
+const PKG_ID_FRAGMENT = '分包\\s*ID';
+
 function findReplicaHeaderLine(lines) {
     for (const l of lines) {
-        if (!/复刻台/.test(l) || !/分包ID/i.test(l)) continue;
-        const m = l.match(/^(\S+)\s+复刻台\s+分包ID\s*[：:]?\s*(\d+)/i);
+        const hasPkgId = new RegExp(PKG_ID_FRAGMENT, 'i').test(l);
+        if (!/复刻台/.test(l) || !hasPkgId) continue;
+        const m = l.match(
+            new RegExp(`^(\\S+)\\s+复刻台\\s+${PKG_ID_FRAGMENT}\\s*[：:]?\\s*(\\d+)`, 'i'),
+        );
         if (m) {
             const seriesRaw = m[1].trim();
             if (!seriesRaw) continue;
@@ -65,7 +74,7 @@ function findReplicaHeaderLine(lines) {
                 seriesTokenUpper: seriesRaw.toUpperCase(),
             };
         }
-        const m2 = l.match(/^(\S+)\s+复刻台\s+分包ID/i);
+        const m2 = l.match(new RegExp(`^(\\S+)\\s+复刻台\\s+${PKG_ID_FRAGMENT}`, 'i'));
         if (m2) {
             const seriesRaw = m2[1].trim();
             if (!seriesRaw) continue;
@@ -81,41 +90,6 @@ function findReplicaHeaderLine(lines) {
 }
 
 /**
- * 主域名行：能解析出域名，且非「（备）」类说明行
- */
-function collectPrimaryDomainHosts(lines, skipLineSet) {
-    const hosts = [];
-    for (const l of lines) {
-        if (skipLineSet.has(l)) continue;
-        if (lineLooksLikeBackup(l)) continue;
-        const host = extractHostRootFromDomainLine(l);
-        if (host) hosts.push(host);
-    }
-    return hosts;
-}
-
-/**
- * 在域名行中查找「{seriesSlug}-…」形态主机名；backupOnly=true 仅看（备）行，false 仅看非备行
- */
-function findLastSeriesPrefixedHost(lines, skipLineSet, seriesSlug, backupOnly) {
-    const slug = (seriesSlug || '').trim().toLowerCase();
-    if (!slug) return null;
-    const prefix = `${slug}-`;
-    let last = null;
-    for (const l of lines) {
-        if (skipLineSet.has(l)) continue;
-        if (backupOnly && !lineLooksLikeBackup(l)) continue;
-        if (!backupOnly && lineLooksLikeBackup(l)) continue;
-        const host = extractHostRootFromDomainLine(l);
-        if (!host) continue;
-        if (host.toLowerCase().startsWith(prefix)) {
-            last = host;
-        }
-    }
-    return last;
-}
-
-/**
  * @param {string} trimmedText
  * @param {string|null} prevHostRoot 上一条仅域名的主机前缀（如 1777mk、365xv）
  * @returns {null | { seriesToken: string, branch: string, packageId: string|null, timeTokens: null }}
@@ -127,42 +101,16 @@ function tryParseSeriesAnnounceForBranchUpdate(trimmedText, prevHostRoot) {
     const header = findReplicaHeaderLine(lines);
     if (!header) return null;
 
-    const skipLineSet = new Set([header.headerLine]);
-    const seriesSlug = header.seriesRaw.toLowerCase();
-
-    // 1) 备线且为「系列-xxx」→ 整条分支名（如 dy-acharpg），本条内其它普通域名不参与拼接
-    const backupSeriesHost = findLastSeriesPrefixedHost(lines, skipLineSet, seriesSlug, true);
-    // 2) 非备行上的「系列-xxx」→ 与「同一人上一条域名」拼接（如 casacopg + xw-casacopg）
-    const mainSeriesHost = findLastSeriesPrefixedHost(lines, skipLineSet, seriesSlug, false);
-
-    const primaryHosts = collectPrimaryDomainHosts(lines, skipLineSet);
-    if (primaryHosts.length === 0 && !backupSeriesHost && !mainSeriesHost) return null;
-
     const prev = (prevHostRoot || '').trim().toLowerCase();
-
-    let branch;
-    if (backupSeriesHost) {
-        branch = backupSeriesHost;
-    } else if (prev && mainSeriesHost) {
-        branch = `${prev}${mainSeriesHost}`;
-    } else if (mainSeriesHost) {
-        branch = mainSeriesHost;
-    } else if (prev && primaryHosts.length > 0) {
-        const suffixHost = primaryHosts[primaryHosts.length - 1];
-        branch = `${prev}${suffixHost}`;
-    } else if (primaryHosts.length >= 2) {
-        const firstHost = primaryHosts[0];
-        const lastHost = primaryHosts[primaryHosts.length - 1];
-        branch = firstHost === lastHost ? lastHost : `${firstHost}${lastHost}`;
-    } else if (primaryHosts.length === 1) {
-        branch = primaryHosts[0];
-    } else {
+    // 新规则：公告里 XX 仅作为系列标识；分支名只使用同发送者上一条“单行域名”。
+    // 「XX 复刻台 ...」后续域名行全部忽略，不参与分支拼接或兜底。
+    if (!prev) {
         return null;
     }
 
     return {
         seriesToken: normalizeSeriesKeyForStore(header.seriesTokenUpper),
-        branch,
+        branch: prev,
         packageId: header.packageId,
         timeTokens: null,
     };

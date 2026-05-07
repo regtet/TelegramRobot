@@ -711,7 +711,7 @@ function isBranchAllowed(branchName) {
                         }
 
                         const timeTok = branchGroupAutoParse.unixSecondsToBranchTimeTokens(message.date);
-                        const res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
+                        let res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
                         lastSeriesDomainBySender.delete(senderCacheKey);
                         try {
                             if (res.ok) {
@@ -721,12 +721,48 @@ function isBranchAllowed(branchName) {
                                     ),
                                 );
                             } else if (res.reason === 'unknown_series') {
-                                await client.sendMessage(message.chatId, {
-                                    message:
-                                        `⚠️ 已识别为系列更新公告，但 branchList 中无「${parsed.seriesToken}」系列，未写入。\n` +
-                                        `解析得到分支名: ${parsed.branch}`,
-                                    linkPreview: false,
-                                });
+                                // 若系列不存在，自动在 branchList.json 中新增该系列再写入
+                                try {
+                                    const branchListStore = require('./lib/branch/branch-list-store');
+                                    const data = branchListStore.readData();
+                                    const key = parsed.seriesToken;
+                                    if (!data[key]) {
+                                        data[key] = {
+                                            branch: parsed.branch,
+                                            desc: `${key}系列`,
+                                        };
+                                        if (Array.isArray(timeTok) && timeTok.length > 0) {
+                                            data[key].time = timeTok;
+                                        }
+                                        branchListStore.writeData(data);
+                                    }
+                                    // 再次更新，确保格式校验通过
+                                    res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
+                                } catch (autoErr) {
+                                    console.log(
+                                        chalk.yellow(
+                                            `自动新增系列「${parsed.seriesToken}」并写入分支失败: ${
+                                                autoErr && autoErr.message
+                                            }`,
+                                        ),
+                                    );
+                                }
+
+                                if (res && res.ok) {
+                                    await client.sendMessage(message.chatId, {
+                                        message:
+                                            `✅ 已识别为系列更新公告，并自动新增系列「${parsed.seriesToken}」写入。\n` +
+                                            `当前分支: ${parsed.branch}`,
+                                        linkPreview: false,
+                                    });
+                                } else {
+                                    await client.sendMessage(message.chatId, {
+                                        message:
+                                            `⚠️ 已识别为系列更新公告，但自动写入「${parsed.seriesToken}」系列失败。\n` +
+                                            `解析得到分支名: ${parsed.branch}`,
+                                        linkPreview: false,
+                                    });
+                                }
                             } else {
                                 await client.sendMessage(message.chatId, {
                                     message:
@@ -2031,6 +2067,13 @@ function isBranchAllowed(branchName) {
                 });
 
                 await new Promise((resolve, reject) => {
+                    try {
+                        if (fs.existsSync(localPath)) {
+                            fs.unlinkSync(localPath);
+                        }
+                    } catch {
+                        // 忽略，交给后续写入阶段处理
+                    }
                     const writer = fs.createWriteStream(localPath);
                     response.data.pipe(writer);
                     writer.on('finish', resolve);
@@ -2049,8 +2092,12 @@ function isBranchAllowed(branchName) {
                 const isRetryable =
                     code === 'ECONNRESET' ||
                     code === 'ETIMEDOUT' ||
+                    code === 'EPERM' ||
+                    code === 'EACCES' ||
+                    code === 'EBUSY' ||
                     /socket hang up/i.test(msg) ||
-                    /timeout/i.test(msg);
+                    /timeout/i.test(msg) ||
+                    /operation not permitted/i.test(msg);
 
                 if (!isRetryable || attempt === maxAttempts) {
                     throw error;
@@ -2140,6 +2187,7 @@ function isBranchAllowed(branchName) {
         let packageId = initialPackageId || null;
         let logoInfo = null;
         let logoLocalPath = '';
+        let logoSourceType = 'primary';
 
         const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
         let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
@@ -2205,14 +2253,35 @@ function isBranchAllowed(branchName) {
 
         // 3. 生成并上传 Logo
         try {
-            const logoRelativePath = path.join('home', 'img', 'configFile', 'gulu_top.avif');
-            const logoPath = path.join(project.path, logoRelativePath);
+            const primaryLogoRelativePath = path.join('home', 'img', 'configFile', 'gulu_top.avif');
+            const fallbackLogoRelativePath = path.join(
+                'src',
+                'assets',
+                'img',
+                'configFile',
+                'gulu_top.avif',
+            );
+            const primaryLogoPath = path.join(project.path, primaryLogoRelativePath);
+            const fallbackLogoPath = path.join(project.path, fallbackLogoRelativePath);
+            let logoPath = primaryLogoPath;
 
             if (!fs.existsSync(logoPath)) {
-                const errText =
-                    `未找到 Logo 文件，打包已中止。请在仓库中放置: ${logoRelativePath}`;
-                console.error(chalk.red(errText));
-                throw new Error(errText);
+                if (fs.existsSync(fallbackLogoPath)) {
+                    logoPath = fallbackLogoPath;
+                    logoSourceType = 'fallback';
+                    console.log(
+                        chalk.yellow(
+                            `⚠ 第一位置未找到 Logo，改用备用路径: ${fallbackLogoRelativePath}`,
+                        ),
+                    );
+                } else {
+                    const errText =
+                        `未找到 Logo 文件，打包已中止。请在仓库中放置以下任一文件:\n` +
+                        `1) ${primaryLogoRelativePath}\n` +
+                        `2) ${fallbackLogoRelativePath}`;
+                    console.error(chalk.red(errText));
+                    throw new Error(errText);
+                }
             }
 
             const tempDir = path.join(__dirname, 'tmp');
@@ -2263,12 +2332,24 @@ function isBranchAllowed(branchName) {
             packageId,
             logoInfo,
             logoLocalPath,
+            logoSourceType,
             projectName: project.name,
         };
     }
 
     // 打包阶段：调用打包接口、轮询 list、下载 APK、上传 S3 并通知群聊
-    async function runApkPackaging({ appName, appNameSlug, primaryDomain, logoInfo, logoLocalPath, branchName, chatId, projectName, statusMsgId }) {
+    async function runApkPackaging({
+        appName,
+        appNameSlug,
+        primaryDomain,
+        logoInfo,
+        logoLocalPath,
+        logoSourceType,
+        branchName,
+        chatId,
+        projectName,
+        statusMsgId,
+    }) {
         if (!appNameSlug) {
             throw new Error('未能从配置中解析出 app_name（appDownPath 中 app- 和 .apk 之间的部分）');
         }
@@ -2297,7 +2378,11 @@ function isBranchAllowed(branchName) {
         }
 
         const apkFileNameFromServer = packed.name;
-        const localApkPath = path.join(tempDir, apkFileNameFromServer);
+        const safeBranch = String(branchName || 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const localApkPath = path.join(
+            tempDir,
+            `${Date.now()}-${safeBranch}-${apkFileNameFromServer}`,
+        );
 
         const downloadUrl = `http://47.128.239.172:8000${packed.url}`;
         console.log(chalk.cyan(`📥 开始下载打包好的 APK: ${downloadUrl}`));
@@ -2352,9 +2437,15 @@ function isBranchAllowed(branchName) {
 
         const apkUrl = url;
 
-        const msg =
+        let msg =
             `✅ APK 打包完成 | ${branchName}\n` +
             `APK地址: ${apkUrl}`;
+        if (logoSourceType === 'fallback') {
+            const fallbackWarn =
+                '⚠ 提醒: 第一位置未找到 Logo，当前分支使用了备用路径 src/assets/img/configFile/gulu_top.avif，请核对。';
+            msg += `\n${fallbackWarn}`;
+            userBotLog.append('APK', `${branchName} ${fallbackWarn}`);
+        }
 
         try {
             userBotLog.append('APK', `Telegram 发群开始 ${branchName}`);
@@ -2589,23 +2680,8 @@ function isBranchAllowed(branchName) {
                             sessionApplyApkDedup &&
                             apkBuiltHistory.wasAlreadyBuilt(ctx.projectName, ctx.appNameSlug)
                         ) {
+                            // 批量模式下仅在最终汇总中统计「跳过」，不逐条发送提示消息
                             outcomes.set(branchName, 'skipped');
-                            const slug = String(ctx.appNameSlug || '').toLowerCase();
-                            try {
-                                await withTimeout(
-                                    client.sendMessage(sessionChatId, {
-                                        message:
-                                            `ℹ️ [批量] 该 APK 已成功打包过，已跳过（自动任务去重）\n\n` +
-                                            `🌿 分支: ${branchName}\n` +
-                                            `📱 app-${slug}.apk（${ctx.projectName}）`,
-                                        linkPreview: false,
-                                    }),
-                                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                    `Telegram sendMessage(批量跳过已打包) ${branchName}`,
-                                );
-                            } catch (skErr) {
-                                console.log(chalk.yellow('发送批量跳过提示失败:', skErr.message));
-                            }
                             continue;
                         }
                         contexts.push({
@@ -2796,6 +2872,7 @@ function isBranchAllowed(branchName) {
                 primaryDomain: primaryDomain || ctx.primaryDomain,
                 logoInfo: ctx.logoInfo,
                 logoLocalPath: ctx.logoLocalPath,
+                logoSourceType: ctx.logoSourceType,
                 branchName,
                 chatId,
                 projectName: ctx.projectName,
@@ -2979,6 +3056,27 @@ function isBranchAllowed(branchName) {
         };
 
         const result = await buildRunner.fullBuild(branchName, updateProgress);
+
+        // 将本次 zip 构建结果写入日志，便于排查「分支 ↔ zip」是否错位
+        try {
+            if (result && result.success) {
+                const zipName = result.zipFileName || '<no-zip-name>';
+                const zipPath = result.zipFilePath || '<no-zip-path>';
+                userBotLog.append(
+                    'ZIP',
+                    `build_success ${project && project.name ? project.name : 'UNKNOWN'}/${branchName} -> ${zipName} (${zipPath})`,
+                );
+            } else {
+                userBotLog.append(
+                    'ZIP',
+                    `build_failure ${project && project.name ? project.name : 'UNKNOWN'}/${branchName}: ${
+                        (result && result.error) || 'unknown_error'
+                    }`,
+                );
+            }
+        } catch {
+            // 日志失败不影响主流程
+        }
 
         if (shouldCancelBuild) {
             log(chalk.yellow('任务已中断'));
