@@ -124,5 +124,33 @@
     "series": "W1",
     "updatedAt": "2026-05-07T20:00:18.515Z",
     "source": "group_announce"
+  },
+  "manga-maepg": {
+    "branch": "manga-maepg",
+    "packageId": "15",
+    "series": "MANGA",
+    "updatedAt": "2026-05-08T10:46:57.589Z",
+    "source": "group_announce"
+  },
+  "498win": {
+    "branch": "498win",
+    "packageId": "18",
+    "series": "888",
+    "updatedAt": "2026-05-08T11:49:23.480Z",
+    "source": "group_announce"
+  },
+  "fa8-wine777": {
+    "branch": "fa8-wine777",
+    "packageId": "5",
+    "series": "FA8",
+    "updatedAt": "2026-05-08T11:58:23.600Z",
+    "source": "group_announce"
+  },
+  "timidezpg": {
+    "branch": "timidezpg",
+    "packageId": "2",
+    "series": "AJ",
+    "updatedAt": "2026-05-08T13:34:05.730Z",
+    "source": "group_announce"
   }
 }

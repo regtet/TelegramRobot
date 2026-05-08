@@ -13,11 +13,18 @@
       "21.40"
     ]
   },
+  "888": {
+    "branch": "498win",
+    "desc": "888系列",
+    "time": [
+      "19.49"
+    ]
+  },
   "AJ": {
-    "branch": "aj-partirpg",
+    "branch": "timidezpg",
     "desc": "AJ系列",
     "time": [
-      "21.40"
+      "21.34"
     ]
   },
   "KF": {
@@ -78,8 +85,11 @@
     ]
   },
   "MANGA": {
-    "branch": "manga-alegria-pg",
-    "desc": "Manga系列"
+    "branch": "manga-maepg",
+    "desc": "Manga系列",
+    "time": [
+      "18.46"
+    ]
   },
   "W1": {
     "branch": "kiwipg",
@@ -96,7 +106,7 @@
     ]
   },
   "WE": {
-    "branch": "we-clamberpg",
+    "branch": "we-igneouspg",
     "desc": "WE系列",
     "time": [
       "04.00"
@@ -171,10 +181,10 @@
     "desc": "WP白版系列"
   },
   "FA8": {
-    "branch": "fa8-lego777",
+    "branch": "fa8-wine777",
     "desc": "FA8系列",
     "time": [
-      "21.40"
+      "19.58"
     ]
   },
   "FA8白版": {

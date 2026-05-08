@@ -33,8 +33,8 @@ const userBotLog = require('./lib/logging/user-bot-logger');
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
-// const ENABLE_LX_MUSIC_ON_MESSAGE = true;
-const ENABLE_LX_MUSIC_ON_MESSAGE = false;
+const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+// const ENABLE_LX_MUSIC_ON_MESSAGE = false;
 
 // LX Music 桌面版路径（请确保路径存在）
 const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
