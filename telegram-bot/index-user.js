@@ -162,6 +162,8 @@ let currentApkBuildChatId = null;
 // 多分支「打包APK a b c」合并：未发汇总前再次触发会并入同一会话，只发一条 📊 统计
 let apkBatchChunkQueue = []; // { resolvedTargets, chatId, applyApkBuiltDedup? }[]
 let apkBatchWorkerPromise = null;
+/** 最近一条群内「📊 APK 批量打包统计」的消息与统计快照（单分支补打成功后可 edit 回填） */
+let apkBatchEditableSummaryRef = null; // { chatId, messageId, orderedBranches, outcomes } | null
 
 // 文件处理队列
 let isProcessingFile = false; // 是否正在处理文件
@@ -2715,6 +2717,68 @@ function isBranchAllowed(branchName) {
         }
     }
 
+    function buildApkBatchSummaryText(orderedBranches, outcomes) {
+        const successList = orderedBranches.filter(b => outcomes.get(b) === 'success');
+        const skippedList = orderedBranches.filter(b => outcomes.get(b) === 'skipped');
+        const failureList = orderedBranches.filter(
+            b => outcomes.get(b) !== 'success' && outcomes.get(b) !== 'skipped',
+        );
+
+        const successCount = successList.length;
+        const failureCount = failureList.length;
+        const skippedCount = skippedList.length;
+
+        let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
+        if (successList.length) {
+            summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+        }
+        summaryMsg += `\n\n⏭ 跳过（曾成功打包） ${skippedCount} 条`;
+        if (skippedList.length) {
+            summaryMsg += '\n' + skippedList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+        }
+        summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
+        if (failureList.length) {
+            summaryMsg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
+        }
+        return summaryMsg;
+    }
+
+    async function refreshApkBatchSummaryIfBranchRecovered(chatId, branchName) {
+        const ref = apkBatchEditableSummaryRef;
+        if (!ref || ref.messageId == null || branchName == null || chatId == null) {
+            return;
+        }
+        if (String(ref.chatId) !== String(chatId)) {
+            return;
+        }
+        if (!ref.orderedBranches.includes(branchName)) {
+            return;
+        }
+        const prev = ref.outcomes.get(branchName);
+        if (prev === 'success' || prev === 'skipped') {
+            return;
+        }
+        ref.outcomes.set(branchName, 'success');
+        const summaryMsg = buildApkBatchSummaryText(ref.orderedBranches, ref.outcomes);
+        try {
+            await withTimeout(
+                client.editMessage(ref.chatId, {
+                    id: ref.messageId,
+                    message: summaryMsg,
+                    linkPreview: false,
+                }),
+                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                'Telegram editMessage(批量汇总回填)',
+            );
+            userBotLog.append(
+                'APK',
+                `批量统计已回填 ${branchName} → 成功 messageId=${ref.messageId}`,
+            );
+        } catch (e) {
+            console.log(chalk.yellow('回填批量汇总消息失败（仍可忽略）:', e.message || e));
+        }
+    }
+
     async function runApkBatchWorkerLoop() {
         const outcomes = new Map();
         const orderedBranches = [];
@@ -2881,36 +2945,31 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            const successList = orderedBranches.filter(b => outcomes.get(b) === 'success');
-            const skippedList = orderedBranches.filter(b => outcomes.get(b) === 'skipped');
-            const failureList = orderedBranches.filter(
-                b => outcomes.get(b) !== 'success' && outcomes.get(b) !== 'skipped',
-            );
+            const summaryMsg = buildApkBatchSummaryText(orderedBranches, outcomes);
 
-            const successCount = successList.length;
-            const failureCount = failureList.length;
-            const skippedCount = skippedList.length;
-
-            let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
-            if (successList.length) {
-                summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-            }
-            summaryMsg += `\n\n⏭ 跳过（曾成功打包） ${skippedCount} 条`;
-            if (skippedList.length) {
-                summaryMsg += '\n' + skippedList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-            }
-            summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
-            if (failureList.length) {
-                summaryMsg += '\n' + failureList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-            }
+            apkBatchEditableSummaryRef = {
+                chatId: sessionChatId,
+                messageId: null,
+                orderedBranches: orderedBranches.slice(),
+                outcomes: new Map(outcomes),
+            };
 
             try {
-                await withTimeout(
+                const sent = await withTimeout(
                     client.sendMessage(sessionChatId, { message: summaryMsg, linkPreview: false }),
                     TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
                     'Telegram sendMessage(批量汇总)',
                 );
+                if (
+                    apkBatchEditableSummaryRef &&
+                    sent &&
+                    sent.id != null &&
+                    String(apkBatchEditableSummaryRef.chatId) === String(sessionChatId)
+                ) {
+                    apkBatchEditableSummaryRef.messageId = sent.id;
+                }
             } catch (e) {
+                apkBatchEditableSummaryRef = null;
                 console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
             }
         } finally {
@@ -3011,6 +3070,7 @@ function isBranchAllowed(branchName) {
             }
 
             await runApkPackaging(merged);
+            await refreshApkBatchSummaryIfBranchRecovered(chatId, branchName);
         } catch (error) {
             const safeProjectName = project && project.name ? project.name : '未知项目';
             userBotLog.append(
