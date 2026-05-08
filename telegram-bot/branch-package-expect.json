@@ -75,5 +75,54 @@
     "series": "A8",
     "updatedAt": "2026-05-06T19:58:14.293Z",
     "source": "group_announce"
+  },
+  "aquario777": {
+    "branch": "aquario777",
+    "packageId": "15",
+    "series": "FA",
+    "updatedAt": "2026-05-07T09:57:23.952Z",
+    "source": "group_announce"
+  },
+  "vioboi": {
+    "branch": "vioboi",
+    "packageId": "28",
+    "series": "BOI",
+    "updatedAt": "2026-05-07T11:03:57.165Z",
+    "source": "group_announce"
+  },
+  "417win": {
+    "branch": "417win",
+    "packageId": "16",
+    "series": "777CLUB",
+    "updatedAt": "2026-05-07T12:53:14.067Z",
+    "source": "group_announce"
+  },
+  "artista777": {
+    "branch": "artista777",
+    "packageId": "0",
+    "series": "777",
+    "updatedAt": "2026-05-07T13:40:10.222Z",
+    "source": "group_announce"
+  },
+  "hms-trunk": {
+    "branch": "hms-trunk",
+    "packageId": "16",
+    "series": "HMS",
+    "updatedAt": "2026-05-07T15:04:53.427Z",
+    "source": "group_announce"
+  },
+  "padlockpg": {
+    "branch": "padlockpg",
+    "packageId": "13",
+    "series": "DZ",
+    "updatedAt": "2026-05-07T18:07:25.068Z",
+    "source": "group_announce"
+  },
+  "kiwipg": {
+    "branch": "kiwipg",
+    "packageId": "13",
+    "series": "W1",
+    "updatedAt": "2026-05-07T20:00:18.515Z",
+    "source": "group_announce"
   }
 }

@@ -7,8 +7,11 @@
     ]
   },
   "777": {
-    "branch": "sentir777",
-    "desc": "777系列"
+    "branch": "artista777",
+    "desc": "777系列",
+    "time": [
+      "21.40"
+    ]
   },
   "AJ": {
     "branch": "aj-partirpg",
@@ -29,10 +32,10 @@
     ]
   },
   "BOI": {
-    "branch": "lilboi",
+    "branch": "vioboi",
     "desc": "boi系列",
     "time": [
-      "4.13"
+      "19.03"
     ]
   },
   "KK": {
@@ -79,10 +82,10 @@
     "desc": "Manga系列"
   },
   "W1": {
-    "branch": "w1-cordialpg",
+    "branch": "kiwipg",
     "desc": "W1系列",
     "time": [
-      "3.59"
+      "4.00"
     ]
   },
   "VOY": {
@@ -100,8 +103,11 @@
     ]
   },
   "DZ": {
-    "branch": "dz-anemonepg",
-    "desc": "dz系列"
+    "branch": "padlockpg",
+    "desc": "dz系列",
+    "time": [
+      "2.07"
+    ]
   },
   "A8": {
     "branch": "stylistpg",
@@ -123,10 +129,10 @@
     "desc": "7K系列"
   },
   "777CLUB": {
-    "branch": "347win",
+    "branch": "417win",
     "desc": "777CLUB系列",
     "time": [
-      "19.00"
+      "20.53"
     ]
   },
   "AA": {
@@ -154,10 +160,10 @@
     "desc": "COROA皇冠系列"
   },
   "HMS": {
-    "branch": "hms-iake",
+    "branch": "hms-trunk",
     "desc": "HMS系列",
     "time": [
-      "22.38"
+      "23.04"
     ]
   },
   "WP白版": {
@@ -192,7 +198,10 @@
     "desc": "BOI白版系列"
   },
   "FA": {
-    "branch": "fa-vaga777",
-    "desc": "FA系列"
+    "branch": "aquario777",
+    "desc": "FA系列",
+    "time": [
+      "17.57"
+    ]
   }
 }

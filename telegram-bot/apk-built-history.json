@@ -362,5 +362,75 @@
     "builtAt": "2026-05-06T20:31:25.517Z",
     "branchName": "coroa-OOPPPG",
     "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-coroa-oopppg.apk"
+  },
+  "WGAME-WEB|kf-ppdbet": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-ppdbet",
+    "builtAt": "2026-05-07T10:21:15.325Z",
+    "branchName": "kf-ppdbet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-ppdbet.apk"
+  },
+  "WGAME-WEB|alfa-77alfa": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "alfa-77alfa",
+    "builtAt": "2026-05-07T11:51:42.222Z",
+    "branchName": "alfa-77alfa",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-alfa-77alfa.apk"
+  },
+  "WGAME-WEB|777-artista777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-artista777",
+    "builtAt": "2026-05-07T20:30:40.377Z",
+    "branchName": "artista777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-artista777.apk"
+  },
+  "WGAME-WEB|kf-mesquitakf": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-mesquitakf",
+    "builtAt": "2026-05-07T20:24:20.026Z",
+    "branchName": "kf-mesquitaKF",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-mesquitakf.apk"
+  },
+  "WGAME-WEB|a8-stylistpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "a8-stylistpg",
+    "builtAt": "2026-05-07T20:26:21.914Z",
+    "branchName": "a8-stylistpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-a8-stylistpg.apk"
+  },
+  "WGAME-WEB|fa-aquario777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fa-aquario777",
+    "builtAt": "2026-05-07T20:26:31.394Z",
+    "branchName": "fa-aquario777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fa-aquario777.apk"
+  },
+  "WGAME-WEB|boi-vioboi": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "boi-vioboi",
+    "builtAt": "2026-05-07T20:28:30.186Z",
+    "branchName": "vioboi",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-boi-vioboi.apk"
+  },
+  "WGAME-WEB|777club-417win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777Club-417win",
+    "builtAt": "2026-05-07T20:28:47.202Z",
+    "branchName": "417win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777Club-417win.apk"
+  },
+  "WGAME-WEB|dz-padlockpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dz-padlockpg",
+    "builtAt": "2026-05-07T20:31:47.512Z",
+    "branchName": "dz-padlockpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dz-padlockpg.apk"
+  },
+  "WGAME-WEB|hms-trunk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "hms-trunk",
+    "builtAt": "2026-05-07T20:32:02.310Z",
+    "branchName": "hms-trunk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-hms-trunk.apk"
   }
 }
