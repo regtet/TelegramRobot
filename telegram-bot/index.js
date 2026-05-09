@@ -1,13 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
 const chalk = require('chalk');
-const fs = require('fs');
-const path = require('path');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const config = require('./lib/core/config');
 const apkTracker = require('./lib/apk/apk-tracker');
 const { extractBranchNameFromFileName } = require('./lib/core/config-reader');
-const { handleCommand: handleBranchListCommand } = require('./lib/branch/branch-list-store');
-const { pathInLogs, LOGS_DIR, formatLogTime } = require('./lib/logging/app-logs');
+const { LOGS_DIR } = require('./lib/logging/app-logs');
 
 // 验证配置
 if (!config.botToken) {
@@ -35,26 +32,6 @@ if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
 }
 
 const bot = new TelegramBot(config.botToken, botOptions);
-const BRANCH_OP_LOG_FILE = pathInLogs('branch-ops.log');
-
-function parseBranchCommand(text) {
-    const first = String(text || '').trim().split(/\s+/)[0] || '';
-    return first.split('@')[0].toLowerCase();
-}
-
-function shouldLogBranchCommand(command) {
-    return ['/add', '/set', '/del'].includes(command);
-}
-
-function appendBranchOpLog({ userId, username, commandText, result }) {
-    const line = `[${formatLogTime()}] uid=${userId ?? ''} user=${username || '-'} cmd=${commandText || ''} => ${result || ''}`;
-
-    try {
-        fs.appendFileSync(BRANCH_OP_LOG_FILE, `${line}\n`, 'utf8');
-    } catch (error) {
-        console.error(chalk.red('写入系列分支日志失败:'), error.message);
-    }
-}
 
 // 记录「是否打包 APK」交互的超时定时器：messageId -> { chatId, branch, timer }
 const pendingDecisions = new Map();
@@ -129,7 +106,7 @@ function sendBatchSummaryPartial() {
 const ENABLE_ZIP_INTERACTIVE = process.env.ENABLE_ZIP_INTERACTIVE !== '0';
 
 console.log(chalk.green('✓ Telegram Bot 已启动（APK 选择监听模式）'));
-console.log(chalk.gray(`文件日志目录: ${LOGS_DIR}（如 branch-ops.log）`));
+console.log(chalk.gray(`文件日志目录: ${LOGS_DIR}`));
 console.log(chalk.gray('等待群组消息...\n'));
 
 // 监听：群消息 + 压缩包 + APK 成功通知
@@ -148,24 +125,6 @@ bot.on('message', (msg) => {
     const isPrivate = msg.chat?.type === 'private';
     if (!isTargetGroup && !isPrivate) {
         return;
-    }
-
-    // 系列最新分支管理命令：写日志文件，不打印到终端
-    if (text) {
-        const branchCommandResult = handleBranchListCommand(text);
-        if (branchCommandResult) {
-            const branchCommand = parseBranchCommand(text);
-            if (shouldLogBranchCommand(branchCommand)) {
-                appendBranchOpLog({
-                    userId,
-                    username,
-                    commandText: text,
-                    result: branchCommandResult,
-                });
-            }
-            sendSafe(chatId, branchCommandResult);
-            return;
-        }
     }
 
     // 1) 打印基础信息
@@ -283,24 +242,14 @@ bot.on('message', (msg) => {
 
         // /help 指令：展示可用命令说明
         if (cleanCmd === '/help') {
-            const commonHelp =
+            const helpMessage =
                 '🤖 打包助手 - 命令列表\n\n' +
                 '【APK 队列命令】\n' +
                 '/apk_list - 查看等待打包 APK 列表\n' +
                 '/apk_add 分支1 分支2 ... - 手动添加等待打包 APK 分支\n' +
                 '/apk_del 分支1 分支2 ... - 从列表中删除分支\n' +
                 '/apk_start_all - 一键触发所有等待打包 APK 分支\n' +
-                '/apk_clear - 清空等待打包 APK 列表\n\n';
-
-            const branchHelp =
-                '【系列最新分支管理】\n' +
-                '/list - 查看全部系列最新分支\n' +
-                '/get AJ KF - 查询一个或多个系列\n' +
-                '/add AJ aj-vocepg - 新增系列\n' +
-                '/set AJ aj-vocepg - 修改系列对应分支\n' +
-                '/del AJ - 删除系列\n\n';
-
-            const helpMessage = commonHelp + branchHelp;
+                '/apk_clear - 清空等待打包 APK 列表\n';
 
             sendSafe(chatId, helpMessage);
             return;

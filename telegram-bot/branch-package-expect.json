@@ -152,5 +152,47 @@
     "series": "AJ",
     "updatedAt": "2026-05-08T13:34:05.730Z",
     "source": "group_announce"
+  },
+  "okok5555": {
+    "branch": "okok5555",
+    "packageId": "8",
+    "series": "OKOK",
+    "updatedAt": "2026-05-09T10:41:48.109Z",
+    "source": "group_announce"
+  },
+  "estadopg": {
+    "branch": "estadopg",
+    "packageId": "2",
+    "series": "EK",
+    "updatedAt": "2026-05-09T13:11:19.294Z",
+    "source": "group_announce"
+  },
+  "greyingpg": {
+    "branch": "greyingpg",
+    "packageId": "15",
+    "series": "91",
+    "updatedAt": "2026-05-09T17:57:14.055Z",
+    "source": "group_announce"
+  },
+  "hms-goldenberry": {
+    "branch": "hms-goldenberry",
+    "packageId": "17",
+    "series": "HMS",
+    "updatedAt": "2026-05-09T18:15:41.627Z",
+    "source": "group_announce"
+  },
+  "bassistpg": {
+    "branch": "bassistpg",
+    "packageId": "19",
+    "series": "VOY",
+    "updatedAt": "2026-05-09T19:50:52.217Z",
+    "source": "group_announce"
+  },
+  "porteiropg": {
+    "branch": "porteiropg",
+    "packageId": "23",
+    "series": "XW",
+    "updatedAt": "2026-05-09T20:30:54.763Z",
+    "source": "group_announce"
   }
 }

@@ -9,8 +9,6 @@ const chalk = require('chalk');
 const axios = require('axios');
 const apkTracker = require('./lib/apk/apk-tracker');
 const apkBuiltHistory = require('./lib/apk/apk-built-history');
-const branchGroupAutoParse = require('./lib/branch/branch-group-auto-parse');
-const { updateSeriesBranch } = require('./lib/branch/branch-list-store');
 const branchPackageExpect = require('./lib/branch/branch-package-expect');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
@@ -33,8 +31,8 @@ const userBotLog = require('./lib/logging/user-bot-logger');
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
-const ENABLE_LX_MUSIC_ON_MESSAGE = true;
-// const ENABLE_LX_MUSIC_ON_MESSAGE = false;
+// const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+const ENABLE_LX_MUSIC_ON_MESSAGE = false;
 
 // LX Music 桌面版路径（请确保路径存在）
 const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
@@ -171,9 +169,6 @@ let fileProcessQueue = []; // 文件处理排队列表
 
 // APK 按钮选择缓存：分支 -> { packageId, appName }
 const pendingApkOptions = new Map();
-
-// 群内「仅一行域名」按发送者缓存：「chatId:senderId」-> { hostRoot }，仅与同一人下一条「复刻台」公告配对
-const lastSeriesDomainBySender = new Map();
 
 // 检查用户权限
 function isUserAllowed(userId) {
@@ -444,12 +439,7 @@ function isBranchAllowed(branchName) {
                     `命令:\n` +
                     `/queue - 查看队列\n` +
                     `/branches - 查看分支\n` +
-                    `/status - 查看状态\n` +
-                    `/list - 查看分支映射\n` +
-                    `/get AJ KF - 查询映射\n` +
-                    `/set AJ xxx - 修改映射\n` +
-                    `/add AJ xxx - 新增映射\n` +
-                    `/del AJ - 删除映射`
+                    `/status - 查看状态`
                 );
                 return;
             }
@@ -747,104 +737,6 @@ function isBranchAllowed(branchName) {
                     }
                 })();
                 return;
-            }
-
-            // 群内自动更新 branchList：上一条单行域名 + 本条「{系列} 复刻台 分包ID … + 域名列表」公告
-            if (process.env.ENABLE_AUTO_BRANCHLIST_FROM_GROUP !== '0') {
-                const senderCacheKey = `${message.chatId.toString()}:${senderId || '0'}`;
-
-                if (branchGroupAutoParse.isSingleLineDomainOnlyMessage(trimmedText)) {
-                    const root = branchGroupAutoParse.extractHostRootFromDomainLine(trimmedText);
-                    if (root) {
-                        lastSeriesDomainBySender.set(senderCacheKey, { hostRoot: root });
-                    }
-                } else {
-                    const prev = lastSeriesDomainBySender.get(senderCacheKey);
-                    const prevRoot = prev && prev.hostRoot ? prev.hostRoot : null;
-                    const parsed = branchGroupAutoParse.tryParseSeriesAnnounceForBranchUpdate(
-                        trimmedText,
-                        prevRoot,
-                    );
-                    if (parsed) {
-                        try {
-                            if (parsed.packageId != null && String(parsed.packageId).trim() !== '') {
-                                branchPackageExpect.setFromAnnounce(parsed.branch, {
-                                    packageId: parsed.packageId,
-                                    series: parsed.seriesToken,
-                                });
-                            }
-                        } catch (expectErr) {
-                            console.log(chalk.yellow('写入群内分包期望失败:', expectErr.message));
-                        }
-
-                        const timeTok = branchGroupAutoParse.unixSecondsToBranchTimeTokens(message.date);
-                        let res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
-                        lastSeriesDomainBySender.delete(senderCacheKey);
-                        try {
-                            if (res.ok) {
-                                console.log(
-                                    chalk.green(
-                                        `[系列分支] 已写入 branchList：${res.canonical} -> ${parsed.branch}`,
-                                    ),
-                                );
-                            } else if (res.reason === 'unknown_series') {
-                                // 若系列不存在，自动在 branchList.json 中新增该系列再写入
-                                try {
-                                    const branchListStore = require('./lib/branch/branch-list-store');
-                                    const data = branchListStore.readData();
-                                    const key = parsed.seriesToken;
-                                    if (!data[key]) {
-                                        data[key] = {
-                                            branch: parsed.branch,
-                                            desc: `${key}系列`,
-                                        };
-                                        if (Array.isArray(timeTok) && timeTok.length > 0) {
-                                            data[key].time = timeTok;
-                                        }
-                                        branchListStore.writeData(data);
-                                    }
-                                    // 再次更新，确保格式校验通过
-                                    res = updateSeriesBranch(parsed.seriesToken, parsed.branch, timeTok);
-                                } catch (autoErr) {
-                                    console.log(
-                                        chalk.yellow(
-                                            `自动新增系列「${parsed.seriesToken}」并写入分支失败: ${
-                                                autoErr && autoErr.message
-                                            }`,
-                                        ),
-                                    );
-                                }
-
-                                if (res && res.ok) {
-                                    await client.sendMessage(message.chatId, {
-                                        message:
-                                            `✅ 已识别为系列更新公告，并自动新增系列「${parsed.seriesToken}」写入。\n` +
-                                            `当前分支: ${parsed.branch}`,
-                                        linkPreview: false,
-                                    });
-                                } else {
-                                    await client.sendMessage(message.chatId, {
-                                        message:
-                                            `⚠️ 已识别为系列更新公告，但自动写入「${parsed.seriesToken}」系列失败。\n` +
-                                            `解析得到分支名: ${parsed.branch}`,
-                                        linkPreview: false,
-                                    });
-                                }
-                            } else {
-                                await client.sendMessage(message.chatId, {
-                                    message:
-                                        `⚠️ 系列分支未更新（${res.reason || '未知原因'}），解析分支名: ${parsed.branch}`,
-                                    linkPreview: false,
-                                });
-                            }
-                        } catch (sendErr) {
-                            console.log(
-                                chalk.yellow('发送系列分支自动更新结果失败:', sendErr.message),
-                            );
-                        }
-                        return;
-                    }
-                }
             }
 
             // 检查是否以"打包"开头
@@ -2257,6 +2149,15 @@ function isBranchAllowed(branchName) {
         throw new Error(`在 ${maxAttempts} 次轮询内未找到已打包 APK（app-${slugForPack}.apk）`);
     }
 
+    function tryUnlinkIfExists(filePath) {
+        if (!filePath || typeof filePath !== 'string') return;
+        try {
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        } catch {
+            // ignore
+        }
+    }
+
     // 预处理：为某个分支准备 APK 打包所需的上下文（切分支、拉代码、读配置、上传 Logo）
     async function prepareApkContext(project, branchName, initialPackageId) {
         return enqueueProjectGitWork(project.name, () =>
@@ -2387,10 +2288,10 @@ function isBranchAllowed(branchName) {
             }
 
             const slug = appNameSlug || branchName;
-            // 文件名必须按分支区分：批量并发时若仅用 slug.png，会互相覆盖，且先结束的任务会删掉同路径文件导致后续只发文字
             const safeSlug = String(slug).replace(/[^a-zA-Z0-9._-]/g, '_');
-            // 恢复为历史规则：仅使用 appDownPath 中 app- 与 .apk 之间的 slug 命名
-            const pngName = `${safeSlug}.png`;
+            const safeBranchFile = String(branchName || 'branch').replace(/[^a-zA-Z0-9._-]/g, '_');
+            // 必须带分支名：同 slug 多分支并发或「准备后因去重跳过」时避免互相覆盖与残留孤儿文件
+            const pngName = `${safeBranchFile}-${safeSlug}.png`;
             const pngPath = path.join(tempDir, pngName);
 
             console.log(chalk.cyan(`🖼 正在将 gulu_top.avif 转为 PNG（命名为 ${pngName}）...`));
@@ -2783,6 +2684,7 @@ function isBranchAllowed(branchName) {
         const outcomes = new Map();
         const orderedBranches = [];
         let sessionChatId = null;
+        let batchHadAutoDedup = false;
 
         try {
             while (apkBatchChunkQueue.length > 0) {
@@ -2806,6 +2708,7 @@ function isBranchAllowed(branchName) {
                     }
                     if (chunk.applyApkBuiltDedup) {
                         sessionApplyApkDedup = true;
+                        batchHadAutoDedup = true;
                     }
                     for (const t of chunk.resolvedTargets) {
                         const bn = t.branchName;
@@ -2847,6 +2750,7 @@ function isBranchAllowed(branchName) {
                             } catch (rmErr) {
                                 console.log(chalk.yellow('批量去重后移除 apk-pending 失败（可忽略）:', rmErr.message));
                             }
+                            tryUnlinkIfExists(ctx.logoLocalPath);
                             continue;
                         }
                         contexts.push({
@@ -2972,6 +2876,17 @@ function isBranchAllowed(branchName) {
                 apkBatchEditableSummaryRef = null;
                 console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
             }
+
+            if (batchHadAutoDedup && orderedBranches.length > 0) {
+                for (const b of orderedBranches) {
+                    try {
+                        apkTracker.remove(b);
+                    } catch (rmErr) {
+                        console.log(chalk.yellow(`批量结束后移除 pending「${b}」失败（可忽略）:`, rmErr.message));
+                    }
+                }
+                console.log(chalk.gray('自动/去重批量 APK 已完成，已从 apk-pending 移除本批全部分支'));
+            }
         } finally {
             apkBatchWorkerPromise = null;
         }
@@ -3066,6 +2981,7 @@ function isBranchAllowed(branchName) {
                 } catch (rmErr) {
                     console.log(chalk.yellow('单分支去重后移除 apk-pending 失败（可忽略）:', rmErr.message));
                 }
+                tryUnlinkIfExists(merged.logoLocalPath);
                 return;
             }
 
