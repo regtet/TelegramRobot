@@ -1078,12 +1078,6 @@ function isBranchAllowed(branchName) {
                         }
 
                         if (!pullResult || !pullResult.success) {
-                            const pullErr =
-                                `📦 ${fileName}\n` +
-                                `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
-                                `❌ 未能拉取到最新远程代码（已重试 ${pullMaxAttempts} 次）。\n` +
-                                `${(pullResult && pullResult.error) || '未知错误'}\n\n` +
-                                `为保证不误报，本次不输出配置文件解析结果。`;
                             console.log(
                                 chalk.red(
                                     `❌ Pull 多次失败 ${project.name}/${actualBranchName}: ${(pullResult && pullResult.error) || '未知错误'}`,
@@ -1093,7 +1087,7 @@ function isBranchAllowed(branchName) {
                                 'ANALYZE',
                                 `Pull 失败不输出检测结果 ${project.name}/${actualBranchName}: ${(pullResult && pullResult.error) || '未知'}`,
                             );
-                            await client.sendMessage(chatId, { message: pullErr, linkPreview: false });
+                            // 不向群内发 Pull 失败文案，避免与「误报」说明刷屏；仅日志
                             return;
                         }
 
@@ -1505,12 +1499,7 @@ function isBranchAllowed(branchName) {
                                     'DETECT',
                                     `Pull 失败不输出检测结果 ${project.name}/${actualBranchName}: ${errDetail}`,
                                 );
-                                results.push({
-                                    projectName: project.name,
-                                    branchName: actualBranchName,
-                                    success: false,
-                                    error: `未能拉取最新远程代码（已重试 ${pullMaxAttempts} 次）：${errDetail}`,
-                                });
+                                // 不写入 results，汇总消息中不展示「未能拉取」类说明
                                 return;
                             }
                             console.log(chalk.green(`✓ [${project.name}] 代码已更新到最新`));
@@ -1578,10 +1567,17 @@ function isBranchAllowed(branchName) {
                 }
             }
 
-            // 汇总结果并发送消息
+            // 汇总结果并发送消息（Pull 失败等未进入 results 的分支不向群内输出）
             const total = results.length;
             let msg = '';
 
+            if (total === 0 && invalidInfos.length === 0) {
+                console.log(
+                    chalk.yellow(
+                        '检测汇总：无可用结果（例如全部 Pull 失败，已仅写日志、不向群内发汇总）',
+                    ),
+                );
+            } else {
             msg += '==================================================\n';
             msg += `🔍 批量检测完成（共 ${total} 个项目）\n`;
             msg += '==================================================\n\n\n';
@@ -1645,6 +1641,7 @@ function isBranchAllowed(branchName) {
                 await client.sendMessage(chatId, { message: msg });
             } catch (error) {
                 console.log(chalk.yellow('发送消息失败:', error.message));
+            }
             }
 
         } catch (error) {
