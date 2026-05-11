@@ -691,5 +691,12 @@
     "builtAt": "2026-05-10T20:31:26.460Z",
     "branchName": "kf-barKF",
     "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-barkf.apk"
+  },
+  "WG-WEB|bet-92bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-92bb",
+    "builtAt": "2026-05-11T01:32:00.872Z",
+    "branchName": "92BB",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-92bb.apk"
   }
 }
