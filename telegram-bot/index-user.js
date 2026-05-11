@@ -371,6 +371,21 @@ function isBranchAllowed(branchName) {
         );
     }
 
+    /** APK 预处理阶段 Pull 失败等：不向群内发长篇 Git 报错（与压缩包检测一致，仅日志） */
+    function shouldSuppressTelegramForApkPrepGitError(error) {
+        const m = String((error && error.message) || error || '');
+        if (/Pull 多次失败无法确认最新代码/i.test(m)) {
+            return true;
+        }
+        if (
+            /Command failed:\s*git pull/i.test(m) &&
+            /unmerged|pulling is not possible/i.test(m)
+        ) {
+            return true;
+        }
+        return false;
+    }
+
     // 监听新消息
     client.addEventHandler(async (event) => {
         try {
@@ -2758,16 +2773,23 @@ function isBranchAllowed(branchName) {
                     } catch (e) {
                         console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
                         outcomes.set(branchName, 'failure');
-                        try {
-                            await withTimeout(
-                                client.sendMessage(sessionChatId, {
-                                    message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
-                                }),
-                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                'Telegram sendMessage(准备失败)',
+                        if (!shouldSuppressTelegramForApkPrepGitError(e)) {
+                            try {
+                                await withTimeout(
+                                    client.sendMessage(sessionChatId, {
+                                        message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
+                                    }),
+                                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                    'Telegram sendMessage(准备失败)',
+                                );
+                            } catch (err) {
+                                console.log(chalk.yellow('发送准备失败提示失败:', err.message));
+                            }
+                        } else {
+                            userBotLog.append(
+                                'APK',
+                                `准备环境失败(Pull 类，不向群发送) ${branchName}: ${(e && e.message) || e}`,
                             );
-                        } catch (err) {
-                            console.log(chalk.yellow('发送准备失败提示失败:', err.message));
                         }
                     }
                 }
@@ -2812,22 +2834,29 @@ function isBranchAllowed(branchName) {
                                     );
                                     outcomes.set(ctx.branchName, 'failure');
 
-                                    try {
-                                        await withTimeout(
-                                            client.sendMessage(ctx.chatId, {
-                                                message: buildApkFailureTelegramMessage(
-                                                    ctx.projectName,
-                                                    ctx.branchName,
-                                                    e,
-                                                ),
-                                                linkPreview: false,
-                                            }),
-                                            TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                            `Telegram sendMessage(批量失败) ${ctx.branchName}`,
-                                        );
-                                    } catch (sendErr) {
-                                        console.log(
-                                            chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message),
+                                    if (!shouldSuppressTelegramForApkPrepGitError(e)) {
+                                        try {
+                                            await withTimeout(
+                                                client.sendMessage(ctx.chatId, {
+                                                    message: buildApkFailureTelegramMessage(
+                                                        ctx.projectName,
+                                                        ctx.branchName,
+                                                        e,
+                                                    ),
+                                                    linkPreview: false,
+                                                }),
+                                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                                `Telegram sendMessage(批量失败) ${ctx.branchName}`,
+                                            );
+                                        } catch (sendErr) {
+                                            console.log(
+                                                chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message),
+                                            );
+                                        }
+                                    } else {
+                                        userBotLog.append(
+                                            'APK',
+                                            `批量 APK 失败(Pull 类，不向群发送) ${ctx.branchName}: ${(e && e.message) || e}`,
                                         );
                                     }
                                 } finally {
@@ -2992,17 +3021,19 @@ function isBranchAllowed(branchName) {
             );
             console.log(chalk.red(`❌ APK 打包失败 ${safeProjectName}/${branchName}（详情见日志）`));
 
-            try {
-                await withTimeout(
-                    client.sendMessage(chatId, {
-                        message: buildApkFailureTelegramMessage(safeProjectName, branchName, error),
-                        linkPreview: false,
-                    }),
-                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                    `Telegram sendMessage(单分支失败) ${branchName}`,
-                );
-            } catch (e) {
-                console.log(chalk.yellow('发送 APK 失败结果消息失败:', e.message));
+            if (!shouldSuppressTelegramForApkPrepGitError(error)) {
+                try {
+                    await withTimeout(
+                        client.sendMessage(chatId, {
+                            message: buildApkFailureTelegramMessage(safeProjectName, branchName, error),
+                            linkPreview: false,
+                        }),
+                        TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                        `Telegram sendMessage(单分支失败) ${branchName}`,
+                    );
+                } catch (e) {
+                    console.log(chalk.yellow('发送 APK 失败结果消息失败:', e.message));
+                }
             }
 
             throw error;
