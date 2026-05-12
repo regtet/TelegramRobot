@@ -1131,6 +1131,11 @@ function isBranchAllowed(branchName) {
                             `🆔 Package: ${result.packageId}\n` +
                             `🎮 环境: ${envText} (debug=${debugFlagText})`;
 
+                        if (result.debug !== false) {
+                            msg +=
+                                `\n\n⚠️ 警告：debug 不为 false（当前：${debugFlagText}），非正式服或未检测到，请确认环境与分包是否正确。`;
+                        }
+
                         const seenDomains = new Set();
                         const uniqueDomains = mainDomains
                             .map(d => String(d).trim())
@@ -1607,6 +1612,10 @@ function isBranchAllowed(branchName) {
                     msg += `📋 Package ID  : ${result.packageId}\n`;
                     msg += `📱 App 名称     : ${result.appName}\n`;
                     msg += `🎮 游服类型     : ${result.debugText} (${result.debugValue})\n\n`;
+
+                    if (result.debug !== false) {
+                        msg += `⚠️ 警告：debug 不为 false（${result.debugValue}），非正式服或未检测到，请确认环境与分包是否正确。\n\n`;
+                    }
 
                     const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
                     const backupDomains = Array.isArray(result.backupDomains) ? result.backupDomains : [];

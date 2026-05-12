@@ -63,9 +63,6 @@ function buildExpectationWarnings(branchName, { packageId, debug } = {}) {
             );
         }
     }
-    if (debug === true) {
-        parts.push('⚠️ debug=true：当前为测试服配置，请确认是否使用正式包。');
-    }
     if (parts.length === 0) return '';
     return `\n\n${parts.join('\n')}`;
 }
