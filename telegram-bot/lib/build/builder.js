@@ -415,9 +415,48 @@ class Builder {
   }
 
   /**
-   * 完整构建流程
+   * 在远端分支列表中按名称解析（不区分大小写）
+   * @returns {Promise<string|null>} 仓库中的实际分支名
    */
-  async fullBuild(branchName, progressCallback) {
+  async resolveRemoteBranchName(branchInput) {
+    const clean = (branchInput || '').trim().replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+    if (!clean) return null;
+
+    if (!this._branchesCache) {
+      try {
+        this._branchesCache = await this.getBranches();
+      } catch {
+        this._branchesCache = [];
+      }
+    }
+
+    const foundLocal = this._branchesCache.find((b) => {
+      const cleanB = b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+      return cleanB.toLowerCase() === clean.toLowerCase();
+    });
+    if (foundLocal) {
+      return foundLocal.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+    }
+
+    const lsResult = await this.runCommand('git ls-remote --heads origin');
+    if (!lsResult.success || !lsResult.output) return null;
+
+    const lower = clean.toLowerCase();
+    for (const line of lsResult.output.split('\n')) {
+      const m = line.match(/refs\/heads\/(\S+)/);
+      if (!m || !m[1]) continue;
+      const name = m[1].trim();
+      if (name.toLowerCase() === lower) return name;
+    }
+    return null;
+  }
+
+  /**
+   * 完整构建流程
+   * @param {object} [options]
+   * @param {(ctx: { branchName: string, commitInfo: string, projectPath: string }) => Promise<void>} [options.afterCheckout]
+   */
+  async fullBuild(branchName, progressCallback, options = {}) {
     try {
       console.log(chalk.bold.cyan('\n' + '='.repeat(50)));
       console.log(chalk.bold.cyan(`🚀 开始构建流程: ${branchName}`));
@@ -439,6 +478,14 @@ class Builder {
       // 2. 切换分支并拉取
       await updateProgress('fetch', 10, '📥 切换分支并拉取代码...');
       const { commitInfo } = await this.checkoutAndPull(branchName);
+
+      if (typeof options.afterCheckout === 'function') {
+        await options.afterCheckout({
+          branchName,
+          commitInfo,
+          projectPath: this.projectPath,
+        });
+      }
 
       // 3. 安装依赖
       await updateProgress('install', 30, '📦 检查并安装依赖...');

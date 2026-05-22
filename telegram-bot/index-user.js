@@ -27,6 +27,13 @@ const config = require('./lib/core/config');
 const Builder = require('./lib/build/builder');
 const FileSplitter = require('./lib/build/file-splitter');
 const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./lib/core/config-reader');
+const { parsePackCommand } = require('./lib/core/parse-pack-command');
+const { syncPackageIdWithGit } = require('./lib/git/package-id-sync');
+const { renderConfigScreenshots, tryUnlinkPngs } = require('./lib/core/config-code-image');
+const {
+    parseAllowedChatIds,
+    shouldHandleUserbotMessage,
+} = require('./lib/core/chat-filter');
 const userBotLog = require('./lib/logging/user-bot-logger');
 
 // 是否启用“收到群消息自动打开 LX Music”功能
@@ -59,6 +66,8 @@ const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
 const phoneNumber = process.env.PHONE_NUMBER;
 const chatId = process.env.CHAT_ID ? BigInt(process.env.CHAT_ID) : null;
+const allowedChatIds = parseAllowedChatIds();
+let selfUserId = null;
 
 // Session 文件路径
 const sessionFile = path.join(__dirname, 'session.txt');
@@ -206,14 +215,22 @@ function isBranchAllowed(branchName) {
 
     // 获取当前用户信息
     const me = await client.getMe();
+    selfUserId = me && me.id != null ? me.id.toString() : null;
     console.log(chalk.cyan(`已登录: ${me.firstName} (${me.username || me.phone})`));
+    if (selfUserId) {
+        console.log(chalk.gray(`  本账号 ID: ${selfUserId}`));
+    }
 
-    if (!chatId) {
+    if (allowedChatIds.size === 0) {
         console.log(chalk.yellow('\n⚠ 未配置 CHAT_ID'));
         console.log(chalk.yellow('请在 .env 中配置目标群组 ID'));
         console.log(chalk.gray('获取方法：在任意群组发送消息，查看控制台输出\n'));
     } else {
-        console.log(chalk.green(`✓ 目标群组: ${chatId}`));
+        console.log(
+            chalk.green(
+                `✓ 监听会话: ${Array.from(allowedChatIds).join(', ')}（含自己发出的打包指令）`,
+            ),
+        );
     }
 
     console.log(chalk.gray('\n等待命令...\n'));
@@ -401,13 +418,11 @@ function isBranchAllowed(branchName) {
                     : '';
             const chatIdStr = message.chatId.toString();
 
-            // 如果配置了 CHAT_ID，只处理并打印该群组的消息，其它群一律忽略
-            if (chatId && chatIdStr !== chatId.toString()) {
+            if (!shouldHandleUserbotMessage(message, allowedChatIds, selfUserId)) {
                 return;
             }
 
-            // 只打印目标群组的消息
-            console.log(chalk.gray('收到目标群消息:'));
+            console.log(chalk.gray(message.out ? '收到自己发出的指令:' : '收到目标群消息:'));
             console.log(chalk.gray('  发送者ID:'), senderId);
             console.log(chalk.gray('  群组ID:'), chatIdStr);
             console.log(chalk.gray('  消息:'), text);
@@ -768,28 +783,16 @@ function isBranchAllowed(branchName) {
                 }
             }
 
-            // 提取分支名（去掉"打包"前缀），支持多个分支用空格或换行隔开
-            const branchText = trimmedText.substring(2).trim();
+            const packItems = parsePackCommand(trimmedText);
 
-            if (branchText.length === 0) {
-                console.log(chalk.yellow('打包命令缺少分支名'));
-                return;
-            }
-
-            // 按空格或换行符分割多个分支，并清理不可见字符
-            const branchNames = branchText
-                .split(/[\s\n\r]+/)  // 支持空格、换行符、回车符
-                .filter(b => b.length > 0)
-                .map(b => {
-                    // 清理不可见字符（零宽字符、零宽非断行空格等）
-                    return b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-                })
-                .filter(b => b.length > 0);
-
-            if (branchNames.length === 0) {
+            if (packItems.length === 0) {
                 console.log(chalk.yellow('打包命令未解析到有效分支名'));
                 return;
             }
+
+            const branchNames = packItems.map((item) =>
+                item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim(),
+            );
 
             // 验证每个分支名
             const invalidFormatBranches = [];
@@ -826,7 +829,8 @@ function isBranchAllowed(branchName) {
             const resolvedBuildTargets = [];
             const invalidBuildBranches = [];
 
-            for (const name of branchNames) {
+            for (const item of packItems) {
+                const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
                 try {
                     const resolved = await resolveProjectAndBranch(name);
                     if (resolved) {
@@ -834,6 +838,10 @@ function isBranchAllowed(branchName) {
                             inputName: name,
                             project: resolved.project,
                             actualBranchName: resolved.actualBranchName,
+                            packageId:
+                                item.packageId != null && Number.isFinite(item.packageId)
+                                    ? item.packageId
+                                    : null,
                         });
                     } else {
                         invalidBuildBranches.push(name);
@@ -912,7 +920,7 @@ function isBranchAllowed(branchName) {
 
             // 处理多个分支（只处理新的有效分支）
             for (let i = 0; i < newTargets.length; i++) {
-                const { project, actualBranchName } = newTargets[i];
+                const { project, actualBranchName, packageId } = newTargets[i];
                 const branchName = actualBranchName;
                 const buildId = Date.now().toString() + '_' + i;
 
@@ -921,6 +929,7 @@ function isBranchAllowed(branchName) {
                         buildId,
                         branchName,
                         project,
+                        packageId,
                         userId: senderId,
                         chatId: message.chatId,
                         timestamp: new Date()
@@ -941,7 +950,9 @@ function isBranchAllowed(branchName) {
                 // 执行构建流程（异步，不等待）
                 (async () => {
                     try {
-                        await executeBuild(project, branchName, senderId, message.chatId);
+                        await executeBuild(project, branchName, senderId, message.chatId, {
+                            packageId,
+                        });
                     } catch (error) {
                         console.error(chalk.red('打包失败:'), error);
                     }
@@ -964,7 +975,7 @@ function isBranchAllowed(branchName) {
         } catch (error) {
             console.error(chalk.red('处理消息时出错:'), error);
         }
-    }, new NewMessage({}));
+    }, new NewMessage({ incoming: true, outgoing: true }));
 
     // 监听文件上传（压缩包）
     client.addEventHandler(async (event) => {
@@ -995,8 +1006,7 @@ function isBranchAllowed(branchName) {
             // 如果没有文件名，跳过
             if (!fileName) return;
 
-            // 如果配置了 CHAT_ID，只处理该群组的消息
-            if (chatId && message.chatId.toString() !== chatId.toString()) {
+            if (!shouldHandleUserbotMessage(message, allowedChatIds, selfUserId)) {
                 return;
             }
 
@@ -1044,7 +1054,7 @@ function isBranchAllowed(branchName) {
         } catch (error) {
             console.error(chalk.red('处理文件消息时出错:'), error);
         }
-    }, new NewMessage({}));
+    }, new NewMessage({ incoming: true, outgoing: true }));
 
     // 处理文件任务（从队列中取出并处理）
     async function processFileTask(task) {
@@ -1736,27 +1746,12 @@ function isBranchAllowed(branchName) {
                     };
                 }
 
-                // 当 fetch 失败导致分支列表陈旧时，用 ls-remote 单独查询该分支是否在远端存在
-                const lsRemoteMaxAttempts = 3;
-                const lsRemoteDelayMs = 3000;
-                let lsResult = null;
-                for (let attempt = 1; attempt <= lsRemoteMaxAttempts; attempt++) {
-                    lsResult = await proj.builder.runCommand('git ls-remote origin ' + trimmedBranch);
-                    if (lsResult && lsResult.success) {
-                        break;
-                    }
-                    if (attempt < lsRemoteMaxAttempts) {
-                        await new Promise(r => setTimeout(r, lsRemoteDelayMs));
-                    }
-                }
-
-                if (lsResult && lsResult.success && lsResult.output && lsResult.output.includes('refs/heads/')) {
-                    const m = lsResult.output.match(/refs\/heads\/(\S+)/);
-                    const actualName = (m && m[1]) ? m[1].trim() : trimmedBranch;
-                    console.log(chalk.cyan(`✓ [${proj.name}] 通过 ls-remote 确认远端分支存在: ${actualName}`));
+                const resolvedRemote = await proj.builder.resolveRemoteBranchName(trimmedBranch);
+                if (resolvedRemote) {
+                    console.log(chalk.cyan(`✓ [${proj.name}] 通过 ls-remote 确认远端分支存在: ${resolvedRemote}`));
                     return {
                         project: proj,
-                        actualBranchName: actualName,
+                        actualBranchName: resolvedRemote,
                     };
                 }
             } catch (e) {
@@ -3124,10 +3119,57 @@ function isBranchAllowed(branchName) {
         });
     }
 
+    async function sendConfigScreenshotsToChat(project, branchName, chatId) {
+        let pngPath = null;
+        try {
+            pngPath = await renderConfigScreenshots(project.path, {
+                projectLabel: project.name,
+                branchName,
+            });
+            if (!pngPath) return;
+
+            await withTimeout(
+                client.sendFile(chatId, {
+                    file: pngPath,
+                    forceDocument: false,
+                }),
+                TELEGRAM_SEND_FILE_TIMEOUT_MS,
+                `Telegram sendFile(配置截图) ${branchName}`,
+            );
+        } catch (err) {
+            console.log(
+                chalk.yellow(`[${branchName}] 配置截图生成/发送失败（可忽略）: ${(err && err.message) || err}`),
+            );
+        } finally {
+            tryUnlinkPngs(pngPath);
+        }
+    }
+
+    async function handlePackageIdAfterCheckout(project, branchName, packageId, chatId) {
+        const syncResult = await syncPackageIdWithGit(project.builder, packageId);
+        if (syncResult.ok && syncResult.skipped) {
+            console.log(chalk.gray(`[${branchName}] packageId 已是 ${packageId}，跳过提交`));
+        } else if (syncResult.ok) {
+            console.log(chalk.green(`[${branchName}] 分包已同步并推送: packageId=${packageId}`));
+        } else {
+            console.log(
+                chalk.red(
+                    `[${branchName}] 分包同步失败（已跳过，继续打包）: ${syncResult.error || '未知错误'}`,
+                ),
+            );
+        }
+
+        await sendConfigScreenshotsToChat(project, branchName, chatId);
+    }
+
     // 执行构建流程（可复用函数，使用指定 project 的 builder）
-    async function executeBuild(project, branchName, senderId, chatId) {
+    async function executeBuild(project, branchName, senderId, chatId, buildOptions = {}) {
         shouldCancelBuild = false;
         const buildRunner = project && project.builder ? project.builder : builder;
+        const packageIdTarget =
+            buildOptions.packageId != null && Number.isFinite(buildOptions.packageId)
+                ? buildOptions.packageId
+                : null;
 
         const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
 
@@ -3139,8 +3181,15 @@ function isBranchAllowed(branchName) {
             }
         };
 
+        const fullBuildOptions = {};
+        if (packageIdTarget != null) {
+            fullBuildOptions.afterCheckout = async () => {
+                await handlePackageIdAfterCheckout(project, branchName, packageIdTarget, chatId);
+            };
+        }
+
         const result = await enqueueProjectGitWork(project.name, () =>
-            buildRunner.fullBuild(branchName, updateProgress),
+            buildRunner.fullBuild(branchName, updateProgress, fullBuildOptions),
         );
 
         // 将本次 zip 构建结果写入日志，便于排查「分支 ↔ zip」是否错位
@@ -3211,7 +3260,9 @@ function isBranchAllowed(branchName) {
 
         // 开始构建流程（不单独发消息，直接开始）
         try {
-            await executeBuild(nextTask.project, nextTask.branchName, nextTask.userId, nextTask.chatId);
+            await executeBuild(nextTask.project, nextTask.branchName, nextTask.userId, nextTask.chatId, {
+                packageId: nextTask.packageId,
+            });
         } catch (error) {
             console.error(chalk.red('队列任务处理失败:'), error);
         }
