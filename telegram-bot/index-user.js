@@ -10,6 +10,8 @@ const axios = require('axios');
 const apkTracker = require('./lib/apk/apk-tracker');
 const apkBuiltHistory = require('./lib/apk/apk-built-history');
 const branchPackageExpect = require('./lib/branch/branch-package-expect');
+const branchAnnounceState = require('./lib/branch/branch-announce-state');
+const branchGroupParse = require('./lib/branch/branch-group-auto-parse');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const { spawn } = require('child_process');
@@ -50,6 +52,9 @@ const ENABLE_TELEGRAM_NETWORK_LOG = false;
 // 是否启用压缩包自动分析（读取配置、域名反解析等），默认 true
 // 置为 true 时，自动上传 / 手动上传的 zip 都会触发「🔍 正在分析压缩包…」
 const ENABLE_ZIP_ANALYZE = true;
+
+// 是否解析群内复刻台公告并写入 branch-package-expect.json（默认开启，设 0 关闭）
+const ENABLE_AUTO_BRANCHLIST_FROM_GROUP = process.env.ENABLE_AUTO_BRANCHLIST_FROM_GROUP !== '0';
 
 // 简单防抖：避免短时间内反复打开
 let lastLaunchTime = 0;
@@ -388,6 +393,36 @@ function isBranchAllowed(branchName) {
         );
     }
 
+    /**
+     * 群内复刻台任务：第 1 条单行域名 → pending；第 2 条复刻台+分包ID → 写入期望分包（可穿插他人消息）
+     */
+    function handleGroupReplicaAnnounce(chatIdStr, trimmedText) {
+        if (!ENABLE_AUTO_BRANCHLIST_FROM_GROUP || !trimmedText) return;
+
+        const hint = branchGroupParse.tryParseBranchNameHintMessage(trimmedText);
+        if (hint) {
+            branchAnnounceState.setPendingBranchHint(chatIdStr, hint);
+            console.log(
+                chalk.cyan(
+                    `[公告] 已记录分支命名参考: ${hint.branchNameHint}（token: ${hint.matchTokens.join(', ')})`,
+                ),
+            );
+            return;
+        }
+
+        const pending = branchAnnounceState.getPendingBranchHint(chatIdStr);
+        const task = branchGroupParse.tryParseReplicaConfigMessage(trimmedText, pending);
+        if (!task) return;
+
+        branchPackageExpect.setFromAnnounceTask(task);
+        branchAnnounceState.clearPendingBranchHint(chatIdStr);
+        console.log(
+            chalk.green(
+                `[公告] 已记录期望分包: key=${task.recordKey} packageId=${task.packageId} series=${task.series || '-'} tokens=${task.matchTokens.length}个`,
+            ),
+        );
+    }
+
     /** APK 预处理阶段 Pull 失败等：不向群内发长篇 Git 报错（与压缩包检测一致，仅日志） */
     function shouldSuppressTelegramForApkPrepGitError(error) {
         const m = String((error && error.message) || error || '');
@@ -426,6 +461,8 @@ function isBranchAllowed(branchName) {
             console.log(chalk.gray('  发送者ID:'), senderId);
             console.log(chalk.gray('  群组ID:'), chatIdStr);
             console.log(chalk.gray('  消息:'), text);
+
+            handleGroupReplicaAnnounce(chatIdStr, text);
 
             // 收到目标群消息时，按需自动打开 LX Music
             if (ENABLE_LX_MUSIC_ON_MESSAGE) {
@@ -1165,10 +1202,13 @@ function isBranchAllowed(branchName) {
                             msg = msg.trimEnd();
                         }
 
-                        msg += branchPackageExpect.buildExpectationWarnings(actualBranchName, {
+                        const pkgWarn = branchPackageExpect.buildExpectationWarnings(actualBranchName, {
                             packageId: result.packageId,
                             debug: result.debug,
                         });
+                        if (pkgWarn.plain) {
+                            console.log(chalk.red(pkgWarn.plain.trim()));
+                        }
 
                         console.log(
                             chalk.green(
@@ -1207,14 +1247,17 @@ function isBranchAllowed(branchName) {
                         }
 
                         try {
-                            await client.sendMessage(chatId, {
-                                message: msg,
-                                parseMode: 'Markdown',
-                            });
+                            const sendPayload = pkgWarn.html
+                                ? {
+                                      message: branchPackageExpect.escapeHtml(msg) + pkgWarn.html,
+                                      parseMode: 'html',
+                                  }
+                                : { message: msg, parseMode: 'Markdown' };
+                            await client.sendMessage(chatId, sendPayload);
                         } catch (error) {
                             try {
                                 await client.sendMessage(chatId, {
-                                    message: msg,
+                                    message: msg + pkgWarn.plain,
                                 });
                             } catch (err) {
                                 console.log(chalk.yellow('发送消息失败:', err.message));
@@ -1650,10 +1693,11 @@ function isBranchAllowed(branchName) {
                         }
                     }
 
-                    msg += branchPackageExpect.buildExpectationWarnings(result.branchName, {
+                    const detectWarn = branchPackageExpect.buildExpectationWarnings(result.branchName, {
                         packageId: result.packageId,
                         debug: result.debug,
                     });
+                    msg += detectWarn.plain;
                 } else {
                     msg += `📁 项目        : ${result.projectName}\n`;
                     msg += `🌿 分支        : ${result.branchName}\n`;

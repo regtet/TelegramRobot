@@ -194,5 +194,27 @@
     "series": "XW",
     "updatedAt": "2026-05-09T20:30:54.763Z",
     "source": "group_announce"
+  },
+  "escolhapg": {
+    "branch": "escolhapg",
+    "packageId": "8",
+    "series": "AJ",
+    "branchNameHint": "escolhapg",
+    "matchTokens": [
+      "escolhapg",
+      "escolha-pg",
+      "aj-escolhapg",
+      "ajescolhapg",
+      "escolhapg.aj-grupo",
+      "escolhapgajgrupo",
+      "aj-grupo"
+    ],
+    "domains": [
+      "escolha-pg",
+      "aj-escolhapg",
+      "escolhapg.aj-grupo"
+    ],
+    "updatedAt": "2026-05-22T15:15:33.478Z",
+    "source": "group_announce"
   }
 }

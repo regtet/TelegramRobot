@@ -1,13 +1,15 @@
 /**
- * 解析群内「单行域名 + {系列} 复刻台 分包ID … + 多行域名」类消息，用于自动更新 branchList.json。
- * 识别关键字为「复刻台」与「分包ID」，系列代码为该行首词（mk、bet、xw、DY 等）。
- * 若存在「（备）」行且主机名为「{系列小写}-…」形态（如 dy-acharpg），优先用该主机名作为 Git 分支名。
+ * 解析群内复刻台任务公告：
+ * - 第 1 条（常单独发）：单行域名 → 分支命名参考 / matchTokens（如 www.EscolhaPG.vip → escolhapg）
+ * - 第 2 条：复刻台 + 分包ID + 域名行 → 期望 packageId 与域名列表
+ * 两条可穿插他人消息，靠 per-chat pending 配对。
  */
+
+const MIN_TOKEN_LEN = 4;
 
 function extractHostRootFromDomainLine(line) {
     const raw = (line || '').trim();
     if (!raw) return null;
-    // 去掉行尾说明如「（备）」「(备)」再取主机名
     const stripped = raw
         .replace(/（\s*备\s*）\s*$/i, '')
         .replace(/\(\s*备\s*\)\s*$/i, '')
@@ -16,7 +18,6 @@ function extractHostRootFromDomainLine(line) {
     const m = t.match(/^([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*)\.[a-z]{2,}$/i);
     if (!m) return null;
     const hostRoot = m[1];
-    // 群公告里常出现 www.xxx.com，这里统一去掉 www. 前缀，避免写入 branchList 时污染分支名
     return hostRoot.startsWith('www.') ? hostRoot.slice(4) : hostRoot;
 }
 
@@ -24,17 +25,10 @@ function lineLooksLikeBackup(line) {
     return /（\s*备\s*）|(\(\s*备\s*\))|（\s*备份\s*）|备用/i.test(line || '');
 }
 
-/** 整段消息仅为单行域名（如 casacopg.com），用于与下一条公告配对 */
 function isSingleLineDomainOnlyMessage(trimmedText) {
     if (!trimmedText || /[\r\n]/.test(trimmedText)) return false;
+    if (/复刻台/.test(trimmedText)) return false;
     return extractHostRootFromDomainLine(trimmedText) !== null;
-}
-
-function unixSecondsToBranchTimeTokens(unixSec) {
-    const d = new Date(Number(unixSec) * 1000);
-    const h = d.getHours();
-    const mi = d.getMinutes();
-    return [`${h}.${String(mi).padStart(2, '0')}`];
 }
 
 function contentLines(trimmedText) {
@@ -44,17 +38,31 @@ function contentLines(trimmedText) {
         .filter((l) => l.length > 0 && !l.startsWith('#'));
 }
 
-/** 群内简称 → branchList.json 中的 key（resolveCanonicalKey 不区分大小写） */
 function normalizeSeriesKeyForStore(upperToken) {
     const u = (upperToken || '').trim().toUpperCase();
     if (u === 'BET') return 'BET经典版';
     return upperToken;
 }
 
-/**
- * 解析「{token} 复刻台 分包ID {n}」行：首词为系列，分包 ID 为数字。
- * 支持「分包ID」与「分包 ID」两种写法。
- */
+function normalizeForMatch(s) {
+    return String(s || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function hostToMatchTokens(hostRoot) {
+    const tokens = new Set();
+    if (!hostRoot) return [];
+    const lower = hostRoot.toLowerCase().trim();
+    if (lower.length >= MIN_TOKEN_LEN) tokens.add(lower);
+    const compact = normalizeForMatch(lower);
+    if (compact.length >= MIN_TOKEN_LEN) tokens.add(compact);
+    for (const part of lower.split('.')) {
+        if (part.length >= MIN_TOKEN_LEN) tokens.add(part);
+    }
+    return [...tokens];
+}
+
 const PKG_ID_FRAGMENT = '分包\\s*ID';
 
 function findReplicaHeaderLine(lines) {
@@ -70,18 +78,6 @@ function findReplicaHeaderLine(lines) {
             return {
                 seriesRaw,
                 packageId: m[2].trim(),
-                headerLine: l,
-                seriesTokenUpper: seriesRaw.toUpperCase(),
-            };
-        }
-        const m2 = l.match(new RegExp(`^(\\S+)\\s+复刻台\\s+${PKG_ID_FRAGMENT}`, 'i'));
-        if (m2) {
-            const seriesRaw = m2[1].trim();
-            if (!seriesRaw) continue;
-            return {
-                seriesRaw,
-                packageId: null,
-                headerLine: l,
                 seriesTokenUpper: seriesRaw.toUpperCase(),
             };
         }
@@ -89,36 +85,105 @@ function findReplicaHeaderLine(lines) {
     return null;
 }
 
+function collectDomainTokensFromLines(lines) {
+    const tokens = new Set();
+    const domains = [];
+    for (const line of lines) {
+        const host = extractHostRootFromDomainLine(line);
+        if (!host) continue;
+        domains.push(host);
+        for (const t of hostToMatchTokens(host)) tokens.add(t);
+    }
+    return { domains, tokens: [...tokens] };
+}
+
 /**
- * @param {string} trimmedText
- * @param {string|null} prevHostRoot 上一条仅域名的主机前缀（如 1777mk、365xv）
- * @returns {null | { seriesToken: string, branch: string, packageId: string|null, timeTokens: null }}
+ * 第 1 条：单行域名（分支命名参考）
+ * @returns {null | { branchNameHint: string, matchTokens: string[] }}
  */
-function tryParseSeriesAnnounceForBranchUpdate(trimmedText, prevHostRoot) {
+function tryParseBranchNameHintMessage(trimmedText) {
+    if (!isSingleLineDomainOnlyMessage(trimmedText)) return null;
+    const host = extractHostRootFromDomainLine(trimmedText);
+    if (!host) return null;
+    return {
+        branchNameHint: host,
+        matchTokens: hostToMatchTokens(host),
+    };
+}
+
+/**
+ * 第 2 条：复刻台 + 分包ID + 域名配置（可与 pending 的第 1 条配对）
+ * @param {null | { branchNameHint: string, matchTokens: string[] }} pendingHint
+ */
+function tryParseReplicaConfigMessage(trimmedText, pendingHint) {
     const lines = contentLines(trimmedText);
-    if (lines.length < 2) return null;
-
     const header = findReplicaHeaderLine(lines);
-    if (!header) return null;
-
-    const prev = (prevHostRoot || '').trim().toLowerCase();
-    // 新规则：公告里 XX 仅作为系列标识；分支名只使用同发送者上一条“单行域名”。
-    // 「XX 复刻台 ...」后续域名行全部忽略，不参与分支拼接或兜底。
-    if (!prev) {
+    if (!header || header.packageId == null || String(header.packageId).trim() === '') {
         return null;
     }
 
+    const { domains, tokens: domainTokens } = collectDomainTokensFromLines(lines);
+    const matchTokens = new Set(domainTokens);
+
+    if (pendingHint) {
+        if (pendingHint.branchNameHint) {
+            for (const t of hostToMatchTokens(pendingHint.branchNameHint)) matchTokens.add(t);
+        }
+        if (Array.isArray(pendingHint.matchTokens)) {
+            for (const t of pendingHint.matchTokens) {
+                if (t && String(t).length >= MIN_TOKEN_LEN) matchTokens.add(String(t).toLowerCase());
+            }
+        }
+    }
+
+    const firstLine = lines[0] || '';
+    const firstHost =
+        !/复刻台/.test(firstLine) ? extractHostRootFromDomainLine(firstLine) : null;
+    if (firstHost) {
+        for (const t of hostToMatchTokens(firstHost)) matchTokens.add(t);
+    }
+
+    const branchNameHint =
+        (pendingHint && pendingHint.branchNameHint) || firstHost || domains[0] || null;
+    if (!branchNameHint) return null;
+
+    const recordKey = branchNameHint.toLowerCase();
+    const filteredTokens = [...matchTokens].filter((t) => t && t.length >= MIN_TOKEN_LEN);
+
     return {
-        seriesToken: normalizeSeriesKeyForStore(header.seriesTokenUpper),
-        branch: prev,
-        packageId: header.packageId,
-        timeTokens: null,
+        recordKey,
+        branchNameHint,
+        series: normalizeSeriesKeyForStore(header.seriesTokenUpper),
+        packageId: String(header.packageId).trim(),
+        matchTokens: filteredTokens,
+        domains,
     };
+}
+
+/** @deprecated 保留旧导出；请用 tryParseBranchNameHintMessage + tryParseReplicaConfigMessage */
+function tryParseSeriesAnnounceForBranchUpdate(trimmedText, prevHostRoot) {
+    if (!prevHostRoot) return null;
+    return tryParseReplicaConfigMessage(trimmedText, {
+        branchNameHint: prevHostRoot,
+        matchTokens: hostToMatchTokens(prevHostRoot),
+    });
+}
+
+function unixSecondsToBranchTimeTokens(unixSec) {
+    const d = new Date(Number(unixSec) * 1000);
+    const h = d.getHours();
+    const mi = d.getMinutes();
+    return [`${h}.${String(mi).padStart(2, '0')}`];
 }
 
 module.exports = {
     extractHostRootFromDomainLine,
     isSingleLineDomainOnlyMessage,
-    unixSecondsToBranchTimeTokens,
+    tryParseBranchNameHintMessage,
+    tryParseReplicaConfigMessage,
     tryParseSeriesAnnounceForBranchUpdate,
+    unixSecondsToBranchTimeTokens,
+    hostToMatchTokens,
+    normalizeForMatch,
+    MIN_TOKEN_LEN,
 };
