@@ -2374,7 +2374,7 @@ function isBranchAllowed(branchName) {
         }
 
         if (!primaryDomain) {
-            throw new Error('未能从配置中解析出 proxyShareUrlList[0] 域名，无法生成 web_url');
+            throw new Error('未能从配置中解析出 proxyShareUrlList 域名，无法生成 web_url');
         }
 
         const webUrlDomain = primaryDomain.replace(/\/+$/, '');
@@ -2782,24 +2782,10 @@ function isBranchAllowed(branchName) {
                     } catch (e) {
                         console.error(chalk.red(`为分支 ${branchName} 准备打包上下文失败:`), e);
                         outcomes.set(branchName, 'failure');
-                        if (!shouldSuppressTelegramForApkPrepGitError(e)) {
-                            try {
-                                await withTimeout(
-                                    client.sendMessage(sessionChatId, {
-                                        message: `❌ 分支 ${branchName} 准备打包环境失败: ${e.message || e}`,
-                                    }),
-                                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                    'Telegram sendMessage(准备失败)',
-                                );
-                            } catch (err) {
-                                console.log(chalk.yellow('发送准备失败提示失败:', err.message));
-                            }
-                        } else {
-                            userBotLog.append(
-                                'APK',
-                                `准备环境失败(Pull 类，不向群发送) ${branchName}: ${(e && e.message) || e}`,
-                            );
-                        }
+                        userBotLog.append(
+                            'APK',
+                            `批量准备环境失败（不向群逐条发送，见最终汇总） ${branchName}: ${(e && e.message) || e}`,
+                        );
                     }
                 }
 
@@ -2842,32 +2828,10 @@ function isBranchAllowed(branchName) {
                                         ),
                                     );
                                     outcomes.set(ctx.branchName, 'failure');
-
-                                    if (!shouldSuppressTelegramForApkPrepGitError(e)) {
-                                        try {
-                                            await withTimeout(
-                                                client.sendMessage(ctx.chatId, {
-                                                    message: buildApkFailureTelegramMessage(
-                                                        ctx.projectName,
-                                                        ctx.branchName,
-                                                        e,
-                                                    ),
-                                                    linkPreview: false,
-                                                }),
-                                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                                `Telegram sendMessage(批量失败) ${ctx.branchName}`,
-                                            );
-                                        } catch (sendErr) {
-                                            console.log(
-                                                chalk.yellow('发送批量 APK 失败结果消息失败:', sendErr.message),
-                                            );
-                                        }
-                                    } else {
-                                        userBotLog.append(
-                                            'APK',
-                                            `批量 APK 失败(Pull 类，不向群发送) ${ctx.branchName}: ${(e && e.message) || e}`,
-                                        );
-                                    }
+                                    userBotLog.append(
+                                        'APK',
+                                        `批量 APK 失败（不向群逐条发送，见最终汇总） ${ctx.projectName}/${ctx.branchName}: ${(e && e.message) || e}`,
+                                    );
                                 } finally {
                                     running--;
                                     runNext();

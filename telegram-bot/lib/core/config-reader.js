@@ -48,12 +48,39 @@ function extractBranchNameFromFileName(fileName) {
     return nameWithoutExt;
 }
 
+/** 从 config 中的完整 URL 提取主机名（小写、无端口） */
+function hostFromConfigUrl(url) {
+    const m = String(url || '').match(/^https?:\/\/([^\/#'"?]+)/i);
+    if (!m || !m[1]) return '';
+    return m[1].split(':')[0].toLowerCase();
+}
+
+/**
+ * 是否为「二级域名」（子域）：去掉 www. 后仍多于根域两段，如 motogp.wgwg777.com
+ * wg-motogp.com / wgmotogp.com 仅两段，不算。
+ */
+function isSubdomainHost(host) {
+    const h = (host || '').replace(/^www\./i, '');
+    const labels = h.split('.').filter(Boolean);
+    return labels.length > 2;
+}
+
+/** proxyShareUrlList 中用于 APK web_url：有子域则取列表顺序中第一个子域 URL，否则取第一项 */
+function pickPrimaryDomainFromProxyUrls(proxyUrls) {
+    if (!Array.isArray(proxyUrls) || proxyUrls.length === 0) return null;
+    const subdomainUrl = proxyUrls.find((url) => {
+        const host = hostFromConfigUrl(url);
+        return host && isSubdomainHost(host);
+    });
+    return subdomainUrl || proxyUrls[0];
+}
+
 /**
  * 读取指定分支的 config.js 文件并提取
  * - packageId
  * - debug
  * - appDownPath 的 app 文件名及中间的 slug
- * - proxyShareUrlList 第一个域名（用于生成 web_url）
+ * - proxyShareUrlList：优先子域 URL，否则第一项（用于生成 web_url）
  * - 反解析出来的主域名 / 备用域名列表（与 0.html 工具生成规则相反向）
  * @param {string} projectPath - 项目路径
  * @param {string} branchName - 分支名
@@ -159,24 +186,23 @@ async function readPackageIdFromBranch(projectPath, branchName) {
         const proxySectionMatch = fileContent.match(/proxyShareUrlList\s*:\s*\[([\s\S]*?)\]/);
         if (proxySectionMatch && proxySectionMatch[1]) {
             const section = proxySectionMatch[1];
-            const urlRegex = /['"]https?:\/\/([^'"]+)['"]/g;
-            const domainSet = new Set();
-            let m;
+            const proxyUrls = [];
+            const fullUrlRegex = /['"](https?:\/\/[^'"]+)['"]/g;
+            let fullM;
+            while ((fullM = fullUrlRegex.exec(section)) !== null) {
+                if (fullM[1]) proxyUrls.push(fullM[1]);
+            }
 
-            while ((m = urlRegex.exec(section)) !== null) {
-                const host = (m[1] || '').trim();
+            const domainSet = new Set();
+            for (const url of proxyUrls) {
+                const host = hostFromConfigUrl(url);
                 if (!host) continue;
                 const base = host.replace(/^www\./i, '');
                 domainSet.add(base);
             }
 
             mainDomains = Array.from(domainSet);
-
-            // primaryDomain 保持旧逻辑：取列表中的第一个完整 URL
-            const firstUrlMatch = section.match(/['"]([^'"]+)['"]/);
-            if (firstUrlMatch && firstUrlMatch[1]) {
-                primaryDomain = firstUrlMatch[1];
-            }
+            primaryDomain = pickPrimaryDomainFromProxyUrls(proxyUrls);
         }
 
         // 尝试解析 independentUrlList（备用域名列表，phone=true 显示手机号）
@@ -248,5 +274,8 @@ async function readPackageIdFromBranch(projectPath, branchName) {
 
 module.exports = {
     extractBranchNameFromFileName,
-    readPackageIdFromBranch
+    readPackageIdFromBranch,
+    hostFromConfigUrl,
+    isSubdomainHost,
+    pickPrimaryDomainFromProxyUrls,
 };

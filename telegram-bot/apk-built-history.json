@@ -817,5 +817,978 @@
     "builtAt": "2026-05-12T11:44:39.259Z",
     "branchName": "ek-Ideiapg",
     "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ek-ideiapg.apk"
+  },
+  "WGAME-WEB|888equipe-581win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "888Equipe-581win",
+    "builtAt": "2026-05-12T12:54:50.728Z",
+    "branchName": "581win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-888Equipe-581win.apk"
+  },
+  "WGAME-WEB|bet-701bet": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "bet-701bet",
+    "builtAt": "2026-05-12T13:50:25.790Z",
+    "branchName": "701bet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-701bet.apk"
+  },
+  "WGAME-WEB|aj-cidadepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "aj-cidadepg",
+    "builtAt": "2026-05-12T14:04:00.132Z",
+    "branchName": "aj-cidadepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-aj-cidadepg.apk"
+  },
+  "WGAME-WEB|we-knockerpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "we-knockerpg",
+    "builtAt": "2026-05-12T20:05:07.511Z",
+    "branchName": "we-knockerpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-we-knockerpg.apk"
+  },
+  "WG-WEB|tc-xangai": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "tc-xangai",
+    "builtAt": "2026-05-12T20:05:08.288Z",
+    "branchName": "tc-xangai",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-tc-xangai.apk"
+  },
+  "WGAME-WEB|kf-brcc": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-brcc",
+    "builtAt": "2026-05-12T20:07:14.985Z",
+    "branchName": "kf-brcc1",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-brcc.apk"
+  },
+  "WGAME-WEB|we-dolphinpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "we-dolphinpg",
+    "builtAt": "2026-05-12T20:07:15.543Z",
+    "branchName": "WE-DolphinPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-we-dolphinpg.apk"
+  },
+  "WGAME-WEB|supertourin": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "supertourin",
+    "builtAt": "2026-05-12T20:09:23.287Z",
+    "branchName": "zg-supertourin",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-supertourin.apk"
+  },
+  "WGAME-WEB|zg-newak": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "zg-newak",
+    "builtAt": "2026-05-12T20:09:27.698Z",
+    "branchName": "newak",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-zg-newak.apk"
+  },
+  "WG-WEB|uu-0513": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "uu-0513",
+    "builtAt": "2026-05-12T20:10:30.110Z",
+    "branchName": "UU-0513",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-uu-0513.apk"
+  },
+  "WGAME-WEB|voy-floristpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "voy-floristpg",
+    "builtAt": "2026-05-12T20:23:55.442Z",
+    "branchName": "voy-floristpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-voy-floristpg.apk"
+  },
+  "WGAME-WEB|wp-unesppg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "wp-unesppg",
+    "builtAt": "2026-05-13T10:14:59.533Z",
+    "branchName": "wp-unesppg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wp-unesppg.apk"
+  },
+  "WGAME-WEB|okok-okokteam": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "okok-okokteam",
+    "builtAt": "2026-05-13T10:20:14.751Z",
+    "branchName": "okokteam",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-okok-okokteam.apk"
+  },
+  "WGAME-WEB|kk-verdekk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kk-verdekk",
+    "builtAt": "2026-05-13T10:58:46.760Z",
+    "branchName": "verdekk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kk-verdekk.apk"
+  },
+  "WGAME-WEB|91-handsetpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "91-handsetpg",
+    "builtAt": "2026-05-13T18:12:52.599Z",
+    "branchName": "91-handsetpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-91-handsetpg.apk"
+  },
+  "WGAME-WEB|888equipe-688win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "888Equipe-688win",
+    "builtAt": "2026-05-13T20:09:41.599Z",
+    "branchName": "688win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-888Equipe-688win.apk"
+  },
+  "WG-WEB|1x-mf": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "1x-mf",
+    "builtAt": "2026-05-13T20:09:48.130Z",
+    "branchName": "1x-mf",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-1x-mf.apk"
+  },
+  "WGAME-WEB|z75xx": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "z75xx",
+    "builtAt": "2026-05-13T20:12:51.244Z",
+    "branchName": "z75xx",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-z75xx.apk"
+  },
+  "WG-WEB|7k-7k-corvo": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "7k-7k-corvo",
+    "builtAt": "2026-05-13T20:13:03.642Z",
+    "branchName": "7k-corvo",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-7k-7k-corvo.apk"
+  },
+  "WGAME-WEB|mk-mkpgpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "mk-mkpgpg",
+    "builtAt": "2026-05-13T20:15:02.682Z",
+    "branchName": "mk-mkpgpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-mk-mkpgpg.apk"
+  },
+  "WG-WEB|bet-0515bet": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-0515bet",
+    "builtAt": "2026-05-13T20:15:13.265Z",
+    "branchName": "0515bet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-0515bet.apk"
+  },
+  "WG-WEB|pop-86m": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "pop-86m",
+    "builtAt": "2026-05-13T20:17:12.924Z",
+    "branchName": "86m",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-pop-86m.apk"
+  },
+  "WG-WEB|luck-820luck": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "luck-820Luck",
+    "builtAt": "2026-05-13T20:17:22.592Z",
+    "branchName": "820luck",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-luck-820Luck.apk"
+  },
+  "WG-WEB|win-117win": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "win-117win",
+    "builtAt": "2026-05-13T20:19:22.456Z",
+    "branchName": "117win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-win-117win.apk"
+  },
+  "WGAME-WEB|kf-castelokf": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-castelokf",
+    "builtAt": "2026-05-13T20:20:28.737Z",
+    "branchName": "kf-casteloKF",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-castelokf.apk"
+  },
+  "WGAME-WEB|dy-petiscopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-petiscopg",
+    "builtAt": "2026-05-13T20:21:37.543Z",
+    "branchName": "dy-petiscopg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-petiscopg.apk"
+  },
+  "WG-WEB|wg-televisao": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "wg-televisao",
+    "builtAt": "2026-05-14T20:10:58.846Z",
+    "branchName": "wg-televisao",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-televisao.apk"
+  },
+  "WGAME-WEB|a8-knucklepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "a8-knucklepg",
+    "builtAt": "2026-05-14T20:11:19.727Z",
+    "branchName": "a8-knucklepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-a8-knucklepg.apk"
+  },
+  "WG-WEB|bet-82rr19": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-82rr19",
+    "builtAt": "2026-05-14T20:13:12.570Z",
+    "branchName": "82rr",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-82rr19.apk"
+  },
+  "WG-WEB|lf-cavalo": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "lf-cavalo",
+    "builtAt": "2026-05-14T20:13:35.631Z",
+    "branchName": "LF-Cavalo2",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-lf-cavalo.apk"
+  },
+  "WGAME-WEB|dy-margaridapg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-margaridapg",
+    "builtAt": "2026-05-14T20:15:37.859Z",
+    "branchName": "dy-margaridapg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-margaridapg.apk"
+  },
+  "WG-WEB|bet-82bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-82bb",
+    "builtAt": "2026-05-14T20:15:50.995Z",
+    "branchName": "82bb",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-82bb.apk"
+  },
+  "WGAME-WEB|alfa-cav777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "alfa-cav777",
+    "builtAt": "2026-05-14T20:17:46.344Z",
+    "branchName": "alfa-cav777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-alfa-cav777.apk"
+  },
+  "WGAME-WEB|hms-mystical": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "hms-mystical",
+    "builtAt": "2026-05-14T20:19:24.792Z",
+    "branchName": "hms-mystical",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-hms-mystical.apk"
+  },
+  "WGAME-WEB|fa-uisque777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fa-uisque777",
+    "builtAt": "2026-05-14T20:20:33.868Z",
+    "branchName": "fa-uisque777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fa-uisque777.apk"
+  },
+  "WGAME-WEB|ty-tymmaa": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "ty-tymmaa",
+    "builtAt": "2026-05-14T20:20:54.624Z",
+    "branchName": "ty-mmaaty",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ty-tymmaa.apk"
+  },
+  "WGAME-WEB|777club-437win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777Club-437win",
+    "builtAt": "2026-05-14T20:22:43.835Z",
+    "branchName": "437win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777Club-437win.apk"
+  },
+  "WGAME-WEB|777-pratica777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-pratica777",
+    "builtAt": "2026-05-14T20:23:26.439Z",
+    "branchName": "pratica777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-pratica777.apk"
+  },
+  "WGAME-WEB|777-tigre777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-tigre777",
+    "builtAt": "2026-05-14T20:25:28.456Z",
+    "branchName": "Tigre777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-tigre777.apk"
+  },
+  "WGAME-WEB|dz-slumberpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dz-slumberpg",
+    "builtAt": "2026-05-14T20:25:37.729Z",
+    "branchName": "dz-slumberpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dz-slumberpg.apk"
+  },
+  "WGAME-WEB|w1-daimlerpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "w1-daimlerpg",
+    "builtAt": "2026-05-16T01:38:48.729Z",
+    "branchName": "w1-daimlerpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-w1-daimlerpg.apk"
+  },
+  "WGAME-WEB|alfa-123alfa": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "alfa-123alfa",
+    "builtAt": "2026-05-16T01:38:50.170Z",
+    "branchName": "alfa-123ALFA",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-alfa-123alfa.apk"
+  },
+  "WG-WEB|luck-816luck": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "luck-816Luck",
+    "builtAt": "2026-05-16T01:40:55.680Z",
+    "branchName": "816luck",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-luck-816Luck.apk"
+  },
+  "WGAME-WEB|kf-bilharkf": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-bilharkf",
+    "builtAt": "2026-05-16T01:40:58.660Z",
+    "branchName": "kf-bilharKF",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-bilharkf.apk"
+  },
+  "WGAME-WEB|88gg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "88gg",
+    "builtAt": "2026-05-16T01:43:01.832Z",
+    "branchName": "88GG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-88gg.apk"
+  },
+  "WGAME-WEB|manga-jacksonpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "manga-jacksonpg",
+    "builtAt": "2026-05-17T09:57:54.635Z",
+    "branchName": "manga-jackson-pg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-manga-jacksonpg.apk"
+  },
+  "WGAME-WEB|boi-dasboi": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "boi-dasboi",
+    "builtAt": "2026-05-16T01:45:12.759Z",
+    "branchName": "dasboi",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-boi-dasboi.apk"
+  },
+  "WGAME-WEB|g936": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "g936",
+    "builtAt": "2026-05-16T01:45:14.382Z",
+    "branchName": "zg936",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-g936.apk"
+  },
+  "WGAME-WEB|888equipe-582win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "888Equipe-582win",
+    "builtAt": "2026-05-16T01:47:25.769Z",
+    "branchName": "582win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-888Equipe-582win.apk"
+  },
+  "WGAME-WEB|aj-pincelpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "aj-pincelpg",
+    "builtAt": "2026-05-16T01:47:31.888Z",
+    "branchName": "aj-pincelpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-aj-pincelpg.apk"
+  },
+  "WGAME-WEB|fa8-pix777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fa8-pix777",
+    "builtAt": "2026-05-16T01:49:36.459Z",
+    "branchName": "fa8-pix777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fa8-pix777.apk"
+  },
+  "WGAME-WEB|we-pantherpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "we-pantherpg",
+    "builtAt": "2026-05-17T09:55:14.066Z",
+    "branchName": "we-pantherpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-we-pantherpg.apk"
+  },
+  "WG-WEB|bet-922bet": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-922bet",
+    "builtAt": "2026-05-17T09:24:33.628Z",
+    "branchName": "922bet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-922bet.apk"
+  },
+  "WGAME-WEB|voy-reptilepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "voy-reptilepg",
+    "builtAt": "2026-05-17T09:24:39.114Z",
+    "branchName": "voy-reptilepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-voy-reptilepg.apk"
+  },
+  "WG-WEB|7v-lontra": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "7v-lontra",
+    "builtAt": "2026-05-17T09:27:03.861Z",
+    "branchName": "7v-lontra",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-7v-lontra.apk"
+  },
+  "WG-WEB|luck-826luck": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "luck-826Luck",
+    "builtAt": "2026-05-17T09:27:20.030Z",
+    "branchName": "826luck",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-luck-826Luck.apk"
+  },
+  "WGAME-WEB|z23xx": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "z23xx",
+    "builtAt": "2026-05-17T09:42:00.762Z",
+    "branchName": "z23xx",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-z23xx.apk"
+  },
+  "WGAME-WEB|kk-brancokk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kk-brancokk",
+    "builtAt": "2026-05-17T09:43:35.250Z",
+    "branchName": "brancokk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kk-brancokk.apk"
+  },
+  "WGAME-WEB|hms-pinkorchid": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "hms-pinkorchid",
+    "builtAt": "2026-05-17T09:46:38.394Z",
+    "branchName": "hms-pinkorchid",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-hms-pinkorchid.apk"
+  },
+  "WGAME-WEB|okok-okokhh": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "okok-okokhh",
+    "builtAt": "2026-05-17T09:47:50.602Z",
+    "branchName": "okokhh",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-okok-okokhh.apk"
+  },
+  "WG-WEB|b25-palitopg555": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "b25-palitopg555",
+    "builtAt": "2026-05-17T09:49:06.856Z",
+    "branchName": "palitopg555",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-b25-palitopg555.apk"
+  },
+  "WGAME-WEB|ek-alegrepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "ek-alegrepg",
+    "builtAt": "2026-05-17T09:56:32.998Z",
+    "branchName": "ek-alegrepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ek-alegrepg.apk"
+  },
+  "WG-WEB|wg-motogp": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "wg-motogp",
+    "builtAt": "2026-05-17T10:03:04.821Z",
+    "branchName": "wg-motogp",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-motogp.apk"
+  },
+  "WG-WEB|b25-dashan777": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "b25-dashan777",
+    "builtAt": "2026-05-17T10:04:58.912Z",
+    "branchName": "dashan777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-b25-dashan777.apk"
+  },
+  "WG-WEB|bet-83bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-83bb",
+    "builtAt": "2026-05-17T10:05:18.627Z",
+    "branchName": "83bb",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-83bb.apk"
+  },
+  "WGAME-WEB|coroa-yyzzpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "coroa-yyzzpg",
+    "builtAt": "2026-05-17T10:07:36.915Z",
+    "branchName": "coroa-YYZZPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-coroa-yyzzpg.apk"
+  },
+  "WG-WEB|win-118win": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "win-118win",
+    "builtAt": "2026-05-17T10:08:15.774Z",
+    "branchName": "118win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-win-118win.apk"
+  },
+  "WG-WEB|1x-ys": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "1x-ys",
+    "builtAt": "2026-05-17T10:09:54.631Z",
+    "branchName": "1x-ys2",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-1x-ys.apk"
+  },
+  "WGAME-WEB|91-taperedpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "91-taperedpg",
+    "builtAt": "2026-05-17T10:10:29.466Z",
+    "branchName": "91-taperedpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-91-taperedpg.apk"
+  },
+  "WGAME-WEB|zg-yywin": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "zg-yywin",
+    "builtAt": "2026-05-17T12:25:23.086Z",
+    "branchName": "zg-yywin",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-zg-yywin.apk"
+  },
+  "WGAME-WEB|we-ventiladorpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "we-ventiladorpg",
+    "builtAt": "2026-05-17T14:14:16.248Z",
+    "branchName": "we-ventiladorpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-we-ventiladorpg.apk"
+  },
+  "WGAME-WEB|dy-mesmopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-mesmopg",
+    "builtAt": "2026-05-17T20:04:11.510Z",
+    "branchName": "dy-mesmopg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-mesmopg.apk"
+  },
+  "WGAME-WEB|mk-788mk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "mk-788mk",
+    "builtAt": "2026-05-17T20:04:14.886Z",
+    "branchName": "mk-788mk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-mk-788mk.apk"
+  },
+  "WGAME-WEB|xw-sedexpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "xw-sedexpg",
+    "builtAt": "2026-05-17T20:06:31.723Z",
+    "branchName": "xw-sedexpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-xw-sedexpg.apk"
+  },
+  "WGAME-WEB|lv7pg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "lv7pg",
+    "builtAt": "2026-05-17T20:06:41.986Z",
+    "branchName": "lv7pg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-lv7pg.apk"
+  },
+  "WGAME-WEB|pop-popfez": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "pop-popfez",
+    "builtAt": "2026-05-17T20:07:44.651Z",
+    "branchName": "popfez",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-pop-popfez.apk"
+  },
+  "WGAME-WEB|w1-perrierpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "w1-perrierpg",
+    "builtAt": "2026-05-18T05:34:36.616Z",
+    "branchName": "w1-perrierpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-w1-perrierpg.apk"
+  },
+  "WGAME-WEB|fa-morango777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fa-morango777",
+    "builtAt": "2026-05-18T11:17:55.058Z",
+    "branchName": "fa-morango777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fa-morango777.apk"
+  },
+  "WGAME-WEB|zg-cutebabyjogo": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "zg-cutebabyjogo",
+    "builtAt": "2026-05-18T16:51:05.628Z",
+    "branchName": "zg-cutebabyjogo",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-zg-cutebabyjogo.apk"
+  },
+  "WG-WEB|b98-bolsalvpg": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "b98-bolsalvpg",
+    "builtAt": "2026-05-18T20:05:28.242Z",
+    "branchName": "BolsaLVPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-b98-bolsalvpg.apk"
+  },
+  "WGAME-WEB|ty-tykkss": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "ty-tykkss",
+    "builtAt": "2026-05-18T20:05:28.349Z",
+    "branchName": "tykkss",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ty-tykkss.apk"
+  },
+  "WGAME-WEB|v5-br777pg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "v5-br777pg",
+    "builtAt": "2026-05-18T20:07:38.158Z",
+    "branchName": "v5-br777pg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-v5-br777pg.apk"
+  },
+  "WGAME-WEB|hms-deer": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "hms-deer",
+    "builtAt": "2026-05-18T20:07:39.150Z",
+    "branchName": "hms-deer",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-hms-deer.apk"
+  },
+  "WGAME-WEB|777club-447win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777Club-447win",
+    "builtAt": "2026-05-18T20:09:49.473Z",
+    "branchName": "447win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777Club-447win.apk"
+  },
+  "WGAME-WEB|777-teclado777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-teclado777",
+    "builtAt": "2026-05-18T20:09:51.398Z",
+    "branchName": "teclado777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-teclado777.apk"
+  },
+  "WGAME-WEB|kf-titanickf": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-titanickf",
+    "builtAt": "2026-05-19T09:17:34.019Z",
+    "branchName": "kf-titanickf",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-titanickf.apk"
+  },
+  "WGAME-WEB|we-prairiepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "we-prairiepg",
+    "builtAt": "2026-05-19T09:21:41.224Z",
+    "branchName": "we-prairiepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-we-prairiepg.apk"
+  },
+  "WGAME-WEB|77gg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "77gg",
+    "builtAt": "2026-05-19T09:21:43.513Z",
+    "branchName": "77GG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-77gg.apk"
+  },
+  "WGAME-WEB|ae-kartpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "ae-kartpg",
+    "builtAt": "2026-05-19T09:22:51.567Z",
+    "branchName": "AE-Kartpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ae-kartpg.apk"
+  },
+  "WGAME-WEB|winbet227": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "winbet227",
+    "builtAt": "2026-05-19T10:52:18.868Z",
+    "branchName": "winbet227",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-winbet227.apk"
+  },
+  "WGAME-WEB|ek-nomepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "ek-nomepg",
+    "builtAt": "2026-05-19T11:13:36.599Z",
+    "branchName": "ek-nomepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-ek-nomepg.apk"
+  },
+  "WGAME-WEB|manga-bosquepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "manga-bosquepg",
+    "builtAt": "2026-05-19T11:25:09.544Z",
+    "branchName": "manga-bosque-pg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-manga-bosquepg.apk"
+  },
+  "WGAME-WEB|boi-icelandpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "boi-icelandpg",
+    "builtAt": "2026-05-19T11:26:42.229Z",
+    "branchName": "icelandpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-boi-icelandpg.apk"
+  },
+  "WGAME-WEB|888equipe-583win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "888Equipe-583win",
+    "builtAt": "2026-05-19T11:45:17.850Z",
+    "branchName": "583win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-888Equipe-583win.apk"
+  },
+  "WGAME-WEB|aj-irmpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "aj-irmpg",
+    "builtAt": "2026-05-19T13:49:01.060Z",
+    "branchName": "aj-IrmPG",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-aj-irmpg.apk"
+  },
+  "WGAME-WEB|kf-mmspg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-mmspg",
+    "builtAt": "2026-05-19T20:07:01.396Z",
+    "branchName": "kf-mmspg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-mmspg.apk"
+  },
+  "WG-WEB|w1-burropg": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "w1-burropg",
+    "builtAt": "2026-05-19T20:07:03.976Z",
+    "branchName": "w1-burropg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-w1-burropg.apk"
+  },
+  "WG-WEB|bet-81rr19": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-81rr19",
+    "builtAt": "2026-05-19T20:09:11.323Z",
+    "branchName": "81rr",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-81rr19.apk"
+  },
+  "WGAME-WEB|a70a": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "a70a",
+    "builtAt": "2026-05-19T20:09:18.547Z",
+    "branchName": "zg-a70a",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-a70a.apk"
+  },
+  "WG-WEB|lf-pneus": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "lf-pneus",
+    "builtAt": "2026-05-19T20:11:25.517Z",
+    "branchName": "lf-pneus",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-lf-pneus.apk"
+  },
+  "WGAME-WEB|888equipe-788win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "888Equipe-788win",
+    "builtAt": "2026-05-19T20:11:29.597Z",
+    "branchName": "788win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-888Equipe-788win.apk"
+  },
+  "WGAME-WEB|aj-dardopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "aj-dardopg",
+    "builtAt": "2026-05-19T20:13:42.974Z",
+    "branchName": "AJ-Dardo",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-aj-dardopg.apk"
+  },
+  "WGAME-WEB|zg-2gak": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "zg-2gak",
+    "builtAt": "2026-05-19T20:13:48.264Z",
+    "branchName": "zg-2gak",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-zg-2gak.apk"
+  },
+  "WGAME-WEB|bet-wjwin": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "bet-wjwin",
+    "builtAt": "2026-05-19T20:14:54.577Z",
+    "branchName": "wjwin",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-wjwin.apk"
+  },
+  "WGAME-WEB|okok-okok7777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "okok-okok7777",
+    "builtAt": "2026-05-20T10:11:52.093Z",
+    "branchName": "okok7777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-okok-okok7777.apk"
+  },
+  "WGAME-WEB|voy-pickledpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "voy-pickledpg",
+    "builtAt": "2026-05-20T20:10:08.391Z",
+    "branchName": "voy-pickledpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-voy-pickledpg.apk"
+  },
+  "WG-WEB|wg-music": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "wg-music",
+    "builtAt": "2026-05-20T20:10:15.797Z",
+    "branchName": "wg-music",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-music.apk"
+  },
+  "WG-WEB|1x-jl": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "1x-jl",
+    "builtAt": "2026-05-20T20:12:18.422Z",
+    "branchName": "1x-jl",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-1x-jl.apk"
+  },
+  "WG-WEB|bet-79bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-79bb",
+    "builtAt": "2026-05-20T20:12:23.637Z",
+    "branchName": "79bb",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-79bb.apk"
+  },
+  "WG-WEB|7k-aguia": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "7k-aguia",
+    "builtAt": "2026-05-20T20:14:36.766Z",
+    "branchName": "7k-aguia",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-7k-aguia.apk"
+  },
+  "WGAME-WEB|51dbet": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "51dbet",
+    "builtAt": "2026-05-20T20:14:37.927Z",
+    "branchName": "51dbet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-51dbet.apk"
+  },
+  "WGAME-WEB|9dd6": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "9dd6",
+    "builtAt": "2026-05-20T20:16:55.661Z",
+    "branchName": "zg-9dd6",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-9dd6.apk"
+  },
+  "WGAME-WEB|kk-gelokk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kk-gelokk",
+    "builtAt": "2026-05-20T20:16:57.070Z",
+    "branchName": "gelokk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kk-gelokk.apk"
+  },
+  "WGAME-WEB|mk-1333mk": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "mk-1333mk",
+    "builtAt": "2026-05-20T20:19:03.097Z",
+    "branchName": "1333mk",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-mk-1333mk.apk"
+  },
+  "WGAME-WEB|wp-gramapg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "wp-gramapg",
+    "builtAt": "2026-05-20T20:19:03.188Z",
+    "branchName": "wp-gramapg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wp-gramapg.apk"
+  },
+  "WG-WEB|pop-08aa": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "pop-08aa",
+    "builtAt": "2026-05-20T20:21:11.030Z",
+    "branchName": "08aa",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-pop-08aa.apk"
+  },
+  "WG-WEB|bet-0522bet": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-0522bet",
+    "builtAt": "2026-05-20T20:21:12.665Z",
+    "branchName": "0522bet",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-0522bet.apk"
+  },
+  "WG-WEB|luck-821luck": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "luck-821Luck",
+    "builtAt": "2026-05-20T20:23:18.487Z",
+    "branchName": "821luck",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-luck-821Luck.apk"
+  },
+  "WG-WEB|win-119win": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "win-119win",
+    "builtAt": "2026-05-20T20:23:21.184Z",
+    "branchName": "119win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-win-119win.apk"
+  },
+  "WGAME-WEB|dy-comumpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-comumpg",
+    "builtAt": "2026-05-20T20:25:27.224Z",
+    "branchName": "dy-comumpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-comumpg.apk"
+  },
+  "WGAME-WEB|91-panachepg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "91-panachepg",
+    "builtAt": "2026-05-20T20:25:34.926Z",
+    "branchName": "91-panachepg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-91-panachepg.apk"
+  },
+  "WGAME-WEB|fp-cascudopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fp-cascudopg",
+    "builtAt": "2026-05-21T20:10:31.006Z",
+    "branchName": "FP-cascudopg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fp-cascudopg.apk"
+  },
+  "WGAME-WEB|a8-fermentpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "a8-fermentpg",
+    "builtAt": "2026-05-21T20:10:31.400Z",
+    "branchName": "a8-fermentpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-a8-fermentpg.apk"
+  },
+  "WGAME-WEB|coroa-11bbpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "coroa-11bbpg",
+    "builtAt": "2026-05-21T20:12:39.542Z",
+    "branchName": "coroa-11bbpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-coroa-11bbpg.apk"
+  },
+  "WGAME-WEB|zg-f88hot": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "zg-f88hot",
+    "builtAt": "2026-05-21T20:12:40.708Z",
+    "branchName": "f88hot",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-zg-f88hot.apk"
+  },
+  "WGAME-WEB|alfa-alfa19": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "alfa-alfa19",
+    "builtAt": "2026-05-21T20:14:49.771Z",
+    "branchName": "alfa-alfa19",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-alfa-alfa19.apk"
+  },
+  "WGAME-WEB|hms-painting": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "hms-painting",
+    "builtAt": "2026-05-21T20:14:53.868Z",
+    "branchName": "hms-painting",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-hms-painting.apk"
+  },
+  "WGAME-WEB|fa-lasanha777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "fa-lasanha777",
+    "builtAt": "2026-05-21T20:17:05.528Z",
+    "branchName": "fa-lasanha777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-fa-lasanha777.apk"
+  },
+  "WG-WEB|wg-biscoito": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "wg-biscoito",
+    "builtAt": "2026-05-21T20:17:13.973Z",
+    "branchName": "wg-biscoito",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-wg-biscoito.apk"
+  },
+  "WGAME-WEB|777-mala777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-mala777",
+    "builtAt": "2026-05-21T20:19:15.313Z",
+    "branchName": "Mala777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-mala777.apk"
+  },
+  "WG-WEB|bet-83rr19": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-83rr19",
+    "builtAt": "2026-05-21T20:19:21.744Z",
+    "branchName": "83rr",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-83rr19.apk"
+  },
+  "WG-WEB|lf-porcelana": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "lf-porcelana",
+    "builtAt": "2026-05-21T20:21:28.745Z",
+    "branchName": "lf-porcelana",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-lf-porcelana.apk"
+  },
+  "WGAME-WEB|dy-milhopg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dy-milhopg",
+    "builtAt": "2026-05-21T20:21:33.883Z",
+    "branchName": "dy-milhopg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dy-milhopg.apk"
+  },
+  "WG-WEB|bet-94bb": {
+    "projectName": "WG-WEB",
+    "appNameSlug": "bet-94bb",
+    "builtAt": "2026-05-21T20:23:40.376Z",
+    "branchName": "94bb",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-bet-94bb.apk"
+  },
+  "WGAME-WEB|777club-457win": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777Club-457win",
+    "builtAt": "2026-05-21T20:23:43.894Z",
+    "branchName": "457win",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777Club-457win.apk"
+  },
+  "WGAME-WEB|777-uniao777": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "777-uniao777",
+    "builtAt": "2026-05-21T20:25:47.503Z",
+    "branchName": "uniao777",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-777-uniao777.apk"
+  },
+  "WGAME-WEB|kf-7ypg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-7ypg",
+    "builtAt": "2026-05-21T20:25:51.213Z",
+    "branchName": "7ypg-vip",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-7ypg.apk"
+  },
+  "WGAME-WEB|dz-pumpkinpg": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "dz-pumpkinpg",
+    "builtAt": "2026-05-21T20:26:54.095Z",
+    "branchName": "dz-pumpkinpg",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-dz-pumpkinpg.apk"
+  },
+  "WGAME-WEB|kf-himalaiakf": {
+    "projectName": "WGAME-WEB",
+    "appNameSlug": "kf-himalaiakf",
+    "builtAt": "2026-05-22T08:38:41.976Z",
+    "branchName": "kf-himalaiakf",
+    "s3Url": "https://gulu3.s3.sa-east-1.amazonaws.com/app-kf-himalaiakf.apk"
   }
 }
