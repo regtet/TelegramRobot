@@ -396,31 +396,56 @@ function isBranchAllowed(branchName) {
     /**
      * 群内复刻台任务：第 1 条单行域名 → pending；第 2 条复刻台+分包ID → 写入期望分包（可穿插他人消息）
      */
-    function handleGroupReplicaAnnounce(chatIdStr, trimmedText) {
+    function handleGroupReplicaAnnounce(chatIdStr, trimmedText, senderId) {
         if (!ENABLE_AUTO_BRANCHLIST_FROM_GROUP || !trimmedText) return;
 
         const hint = branchGroupParse.tryParseBranchNameHintMessage(trimmedText);
         if (hint) {
-            branchAnnounceState.setPendingBranchHint(chatIdStr, hint);
+            branchAnnounceState.setPendingBranchHint(chatIdStr, senderId, hint);
             console.log(
                 chalk.cyan(
-                    `[公告] 已记录分支命名参考: ${hint.branchNameHint}（token: ${hint.matchTokens.join(', ')})`,
+                    `✅ [公告] 已记录命名参考: ${hint.branchNameHint}（发送者 ${senderId || '-'}，等待复刻台分包行）`,
                 ),
             );
             return;
         }
 
-        const pending = branchAnnounceState.getPendingBranchHint(chatIdStr);
+        const pending = branchAnnounceState.getPendingBranchHint(chatIdStr, senderId);
         const task = branchGroupParse.tryParseReplicaConfigMessage(trimmedText, pending);
         if (!task) return;
 
         branchPackageExpect.setFromAnnounceTask(task);
-        branchAnnounceState.clearPendingBranchHint(chatIdStr);
+        branchAnnounceState.clearPendingBranchHint(chatIdStr, senderId);
+        const seriesPart = task.series ? `，系列 ${task.series}` : '';
         console.log(
             chalk.green(
-                `[公告] 已记录期望分包: key=${task.recordKey} packageId=${task.packageId} series=${task.series || '-'} tokens=${task.matchTokens.length}个`,
+                `✅ [公告] 已记录 ${task.recordKey} → packageId ${task.packageId}${seriesPart}（发送者 ${senderId || '-'}，匹配 token ${task.matchTokens.length} 个）`,
             ),
         );
+    }
+
+    async function sendPackageMismatchAlert(chatId, { fileName, branchName, pkgWarn }) {
+        if (!pkgWarn || !pkgWarn.html) return;
+        const header = branchPackageExpect.escapeHtml(
+            `📦 ${fileName || '压缩包'}\n🌿 分支: ${branchName || '-'}\n`,
+        );
+        try {
+            await withTimeout(
+                client.sendMessage(chatId, {
+                    message: header + pkgWarn.html.trim(),
+                    parseMode: 'html',
+                    linkPreview: false,
+                }),
+                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                `Telegram sendMessage(分包不一致告警) ${branchName}`,
+            );
+        } catch (err) {
+            console.log(
+                chalk.yellow(
+                    `[${branchName}] 分包不一致单独告警发送失败: ${(err && err.message) || err}`,
+                ),
+            );
+        }
     }
 
     /** APK 预处理阶段 Pull 失败等：不向群内发长篇 Git 报错（与压缩包检测一致，仅日志） */
@@ -462,7 +487,7 @@ function isBranchAllowed(branchName) {
             console.log(chalk.gray('  群组ID:'), chatIdStr);
             console.log(chalk.gray('  消息:'), text);
 
-            handleGroupReplicaAnnounce(chatIdStr, text);
+            handleGroupReplicaAnnounce(chatIdStr, text, senderId);
 
             // 收到目标群消息时，按需自动打开 LX Music
             if (ENABLE_LX_MUSIC_ON_MESSAGE) {
@@ -1247,21 +1272,29 @@ function isBranchAllowed(branchName) {
                         }
 
                         try {
-                            const sendPayload = pkgWarn.html
-                                ? {
-                                      message: branchPackageExpect.escapeHtml(msg) + pkgWarn.html,
-                                      parseMode: 'html',
-                                  }
-                                : { message: msg, parseMode: 'Markdown' };
-                            await client.sendMessage(chatId, sendPayload);
+                            await withTimeout(
+                                client.sendMessage(chatId, {
+                                    message: branchPackageExpect.escapeHtml(msg),
+                                    parseMode: 'html',
+                                    linkPreview: false,
+                                }),
+                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                                `Telegram sendMessage(压缩包检测) ${actualBranchName}`,
+                            );
                         } catch (error) {
                             try {
-                                await client.sendMessage(chatId, {
-                                    message: msg + pkgWarn.plain,
-                                });
+                                await client.sendMessage(chatId, { message: msg, linkPreview: false });
                             } catch (err) {
-                                console.log(chalk.yellow('发送消息失败:', err.message));
+                                console.log(chalk.yellow('发送压缩包检测结果失败:', err.message));
                             }
+                        }
+
+                        if (pkgWarn.html) {
+                            await sendPackageMismatchAlert(chatId, {
+                                fileName,
+                                branchName: actualBranchName,
+                                pkgWarn,
+                            });
                         }
                     } else {
                         const errorMsg =
@@ -3199,11 +3232,10 @@ function isBranchAllowed(branchName) {
                     chalk.green(`[${branchName}] 分包已同步并推送: packageId=${packageIdTarget}`),
                 );
             } else {
-                console.log(
-                    chalk.red(
-                        `[${branchName}] 分包同步失败（已跳过，继续打包）: ${syncResult.error || '未知错误'}`,
-                    ),
-                );
+                await project.builder.runCommand('git checkout -- src/config/config.js');
+                const errMsg = syncResult.error || '未知错误';
+                console.log(chalk.red(`[${branchName}] 分包同步失败，已中止本分支打包: ${errMsg}`));
+                throw new Error(`分包同步失败: ${errMsg}`);
             }
         }
 

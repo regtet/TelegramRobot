@@ -1,40 +1,48 @@
 /**
- * 按群缓存「第 1 条」分支命名参考（单行域名），供「第 2 条」复刻台分包块配对。
- * 中间穿插他人消息不清空，仅超时失效。
+ * 按群 + 发送者缓存「第 1 条」分支命名参考，避免多台子并行时串台。
  */
 
 const PENDING_TTL_MS = parseInt(process.env.BRANCH_ANNOUNCE_PENDING_TTL_MS || String(4 * 60 * 60 * 1000), 10);
 
-/** @type {Map<string, { branchNameHint: string, matchTokens: string[], updatedAt: number }>} */
-const pendingByChat = new Map();
+/** @type {Map<string, { branchNameHint: string, matchTokens: string[], updatedAt: number, senderId: string }>} */
+const pendingByKey = new Map();
 
-function setPendingBranchHint(chatId, hint) {
+function makePendingKey(chatId, senderId) {
+    const c = String(chatId || '').trim();
+    const s = String(senderId || '').trim() || 'unknown';
+    return `${c}:${s}`;
+}
+
+function setPendingBranchHint(chatId, senderId, hint) {
     if (!chatId || !hint || !hint.branchNameHint) return;
-    pendingByChat.set(String(chatId), {
+    const key = makePendingKey(chatId, senderId);
+    pendingByKey.set(key, {
         branchNameHint: hint.branchNameHint,
         matchTokens: Array.isArray(hint.matchTokens) ? hint.matchTokens.slice() : [],
         updatedAt: Date.now(),
+        senderId: String(senderId || ''),
     });
 }
 
-function getPendingBranchHint(chatId) {
-    const key = String(chatId);
-    const p = pendingByChat.get(key);
+function getPendingBranchHint(chatId, senderId) {
+    const key = makePendingKey(chatId, senderId);
+    const p = pendingByKey.get(key);
     if (!p) return null;
     if (Date.now() - p.updatedAt > PENDING_TTL_MS) {
-        pendingByChat.delete(key);
+        pendingByKey.delete(key);
         return null;
     }
     return p;
 }
 
-function clearPendingBranchHint(chatId) {
-    pendingByChat.delete(String(chatId));
+function clearPendingBranchHint(chatId, senderId) {
+    pendingByKey.delete(makePendingKey(chatId, senderId));
 }
 
 module.exports = {
     setPendingBranchHint,
     getPendingBranchHint,
     clearPendingBranchHint,
+    makePendingKey,
     PENDING_TTL_MS,
 };
