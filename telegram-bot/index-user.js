@@ -3145,18 +3145,22 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    async function handlePackageIdAfterCheckout(project, branchName, packageId, chatId) {
-        const syncResult = await syncPackageIdWithGit(project.builder, packageId);
-        if (syncResult.ok && syncResult.skipped) {
-            console.log(chalk.gray(`[${branchName}] packageId 已是 ${packageId}，跳过提交`));
-        } else if (syncResult.ok) {
-            console.log(chalk.green(`[${branchName}] 分包已同步并推送: packageId=${packageId}`));
-        } else {
-            console.log(
-                chalk.red(
-                    `[${branchName}] 分包同步失败（已跳过，继续打包）: ${syncResult.error || '未知错误'}`,
-                ),
-            );
+    async function handleAfterCheckoutForBuild(project, branchName, chatId, packageIdTarget) {
+        if (packageIdTarget != null) {
+            const syncResult = await syncPackageIdWithGit(project.builder, packageIdTarget);
+            if (syncResult.ok && syncResult.skipped) {
+                console.log(chalk.gray(`[${branchName}] packageId 已是 ${packageIdTarget}，跳过提交`));
+            } else if (syncResult.ok) {
+                console.log(
+                    chalk.green(`[${branchName}] 分包已同步并推送: packageId=${packageIdTarget}`),
+                );
+            } else {
+                console.log(
+                    chalk.red(
+                        `[${branchName}] 分包同步失败（已跳过，继续打包）: ${syncResult.error || '未知错误'}`,
+                    ),
+                );
+            }
         }
 
         await sendConfigScreenshotsToChat(project, branchName, chatId);
@@ -3181,12 +3185,11 @@ function isBranchAllowed(branchName) {
             }
         };
 
-        const fullBuildOptions = {};
-        if (packageIdTarget != null) {
-            fullBuildOptions.afterCheckout = async () => {
-                await handlePackageIdAfterCheckout(project, branchName, packageIdTarget, chatId);
-            };
-        }
+        const fullBuildOptions = {
+            afterCheckout: async () => {
+                await handleAfterCheckoutForBuild(project, branchName, chatId, packageIdTarget);
+            },
+        };
 
         const result = await enqueueProjectGitWork(project.name, () =>
             buildRunner.fullBuild(branchName, updateProgress, fullBuildOptions),
