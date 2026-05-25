@@ -101,6 +101,15 @@ function collectDomainTokensFromLines(lines) {
  * 第 1 条：单行域名（分支命名参考）
  * @returns {null | { branchNameHint: string, matchTokens: string[] }}
  */
+/** 是否像复刻台公告（命名参考单行域名，或含「复刻台 + 分包ID」块） */
+function isAnnounceRelatedText(trimmedText) {
+    const t = (trimmedText || '').trim();
+    if (!t) return false;
+    if (tryParseBranchNameHintMessage(t)) return true;
+    const lines = contentLines(t);
+    return findReplicaHeaderLine(lines) != null;
+}
+
 function tryParseBranchNameHintMessage(trimmedText) {
     if (!isSingleLineDomainOnlyMessage(trimmedText)) return null;
     const host = extractHostRootFromDomainLine(trimmedText);
@@ -179,6 +188,7 @@ function unixSecondsToBranchTimeTokens(unixSec) {
 module.exports = {
     extractHostRootFromDomainLine,
     isSingleLineDomainOnlyMessage,
+    isAnnounceRelatedText,
     tryParseBranchNameHintMessage,
     tryParseReplicaConfigMessage,
     tryParseSeriesAnnounceForBranchUpdate,

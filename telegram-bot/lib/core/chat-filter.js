@@ -1,6 +1,8 @@
 /**
- * Userbot 会话过滤：支持工作群 incoming + 收藏夹/私聊机器人等「自己发出的」打包指令。
+ * Userbot 会话过滤：支持工作群 incoming + 自己发出的打包/复刻台公告（含私聊 Bot）。
  */
+
+const { isAnnounceRelatedText } = require('../branch/branch-group-auto-parse');
 
 function parseAllowedChatIds() {
     const ids = new Set();
@@ -52,8 +54,11 @@ function shouldHandleUserbotMessage(message, allowedChatIds, selfUserId) {
         return allowedChatIds.has(chatIdStr);
     }
 
-    if (selfUserId && senderId === selfUserId && isPackRelatedCommandText(message.text)) {
-        return true;
+    if (selfUserId && senderId === selfUserId) {
+        const text = message.text || '';
+        if (isPackRelatedCommandText(text) || isAnnounceRelatedText(text.trim())) {
+            return true;
+        }
     }
 
     return allowedChatIds.has(chatIdStr);
@@ -62,5 +67,6 @@ function shouldHandleUserbotMessage(message, allowedChatIds, selfUserId) {
 module.exports = {
     parseAllowedChatIds,
     isPackRelatedCommandText,
+    isAnnounceRelatedText,
     shouldHandleUserbotMessage,
 };

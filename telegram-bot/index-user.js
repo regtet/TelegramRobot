@@ -412,7 +412,16 @@ function isBranchAllowed(branchName) {
 
         const pending = branchAnnounceState.getPendingBranchHint(chatIdStr, senderId);
         const task = branchGroupParse.tryParseReplicaConfigMessage(trimmedText, pending);
-        if (!task) return;
+        if (!task) {
+            if (branchGroupParse.isAnnounceRelatedText(trimmedText)) {
+                console.log(
+                    chalk.yellow(
+                        `⚠ [公告] 识别到复刻台相关内容但解析失败（发送者 ${senderId || '-'}，会话 ${chatIdStr}）`,
+                    ),
+                );
+            }
+            return;
+        }
 
         branchPackageExpect.setFromAnnounceTask(task);
         branchAnnounceState.clearPendingBranchHint(chatIdStr, senderId);
@@ -482,7 +491,20 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
-            console.log(chalk.gray(message.out ? '收到自己发出的指令:' : '收到目标群消息:'));
+            const isSelfAnnounce =
+                message.out &&
+                selfUserId &&
+                senderId === selfUserId &&
+                branchGroupParse.isAnnounceRelatedText(text);
+            console.log(
+                chalk.gray(
+                    message.out
+                        ? isSelfAnnounce
+                            ? '收到自己发出的公告/指令:'
+                            : '收到自己发出的指令:'
+                        : '收到目标群消息:',
+                ),
+            );
             console.log(chalk.gray('  发送者ID:'), senderId);
             console.log(chalk.gray('  群组ID:'), chatIdStr);
             console.log(chalk.gray('  消息:'), text);
@@ -1127,217 +1149,38 @@ function isBranchAllowed(branchName) {
 
         try {
             await enqueueProjectGitWork(project.name, async () => {
-                // 切换到该分支并拉取最新代码，确保读取的是远程最新配置
-                const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
-                let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
-
                 try {
-                    const targetBranch = actualBranchName;
-
-                    if (originalBranch === targetBranch) {
-                        console.log(chalk.gray(`当前已在分支 ${targetBranch}，拉取最新代码...`));
-                    } else {
-                        if (config.build.autoFetchPull) {
-                            console.log(chalk.cyan(`📥 [${project.name}] 获取远程分支信息...`));
-                            const fetchResult = await project.builder.runCommand('git fetch --all');
-                            if (!fetchResult.success) {
-                                console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支...`));
-                            } else {
-                                console.log(chalk.green(`✓ Fetch 完成`));
-                            }
-                        }
-
-                        await safeCheckoutBranch(project, targetBranch);
-                    }
-
-                    if (config.build.autoFetchPull) {
-                        console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
-                        const pullMaxAttempts = 3;
-                        const pullDelayMs = 3000;
-                        let pullResult = null;
-
-                        for (let attempt = 1; attempt <= pullMaxAttempts; attempt++) {
-                            pullResult = await project.builder.runCommand('git pull');
-                            if (pullResult && pullResult.success) break;
-                            if (attempt < pullMaxAttempts) {
-                                await new Promise(r => setTimeout(r, pullDelayMs));
-                            }
-                        }
-
-                        if (!pullResult || !pullResult.success) {
-                            console.log(
-                                chalk.red(
-                                    `❌ Pull 多次失败 ${project.name}/${actualBranchName}: ${(pullResult && pullResult.error) || '未知错误'}`,
-                                ),
-                            );
-                            userBotLog.append(
-                                'ANALYZE',
-                                `Pull 失败不输出检测结果 ${project.name}/${actualBranchName}: ${(pullResult && pullResult.error) || '未知'}`,
-                            );
-                            // 不向群内发 Pull 失败文案，避免与「误报」说明刷屏；仅日志
-                            return;
-                        }
-
-                        console.log(chalk.green(`✓ 代码已更新到最新`));
-                    }
-
-                    console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件...`));
-                    const result = await readPackageIdFromBranch(project.path, actualBranchName);
-
-                    if (result.success) {
-                        const envText = result.debug !== undefined
-                            ? (result.debug ? '测试服' : '正式服')
-                            : '未知';
-                        const debugFlagText = result.debug !== undefined
-                            ? String(result.debug)
-                            : '未检测到';
-
-                        const appName = result.appName || '未检测到';
-
-                        const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
-
-                        let msg =
-                            `📦 ${fileName}\n` +
-                            `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
-                            `📱 APK: ${appName}\n` +
-                            `🆔 Package: ${result.packageId}\n` +
-                            `🎮 环境: ${envText} (debug=${debugFlagText})`;
-
-                        if (result.debug !== false) {
-                            msg +=
-                                `\n\n⚠️ 警告：debug 不为 false（当前：${debugFlagText}），非正式服或未检测到，请确认环境与分包是否正确。`;
-                        }
-
-                        const seenDomains = new Set();
-                        const uniqueDomains = mainDomains
-                            .map(d => String(d).trim())
-                            .filter(Boolean)
-                            .filter((d) => {
-                                const key = d.toLowerCase();
-                                if (seenDomains.has(key)) return false;
-                                seenDomains.add(key);
-                                return true;
-                            });
-
-                        if (uniqueDomains.length > 0) {
-                            msg += `\n\n🌐 主域名:\n`;
-                            uniqueDomains.forEach((d) => {
-                                msg += `- ${d}\n`;
-                            });
-                            msg = msg.trimEnd();
-                        }
-
-                        const pkgWarn = branchPackageExpect.buildExpectationWarnings(actualBranchName, {
-                            packageId: result.packageId,
-                            debug: result.debug,
-                        });
-                        if (pkgWarn.plain) {
-                            console.log(chalk.red(pkgWarn.plain.trim()));
-                        }
-
-                        console.log(
-                            chalk.green(
-                                `✅ 分支 ${actualBranchName} 当前分支分包ID packageId: ${result.packageId}, appName: ${appName}, debug: ${result.debug !== undefined ? result.debug : '未检测到'}`
-                            )
-                        );
-
-                        pendingApkOptions.set(actualBranchName, {
-                            packageId: result.packageId,
-                            appName,
-                            appNameSlug: result.appNameSlug,
-                            primaryDomain: result.primaryDomain,
-                        });
-
-                        try {
-                            apkTracker.addOrUpdate(actualBranchName, {
-                                source: 'analyzed',
-                                fileName,
-                                chatId,
-                                packageId: result.packageId || null,
-                                appName,
-                                appNameSlug: result.appNameSlug || null,
-                                primaryDomain: result.primaryDomain || null,
-                            });
-                            console.log(
-                                chalk.gray(
-                                    `已将分支 ${actualBranchName} 的 APK 配置信息写入 apk-pending.json`
-                                )
-                            );
-                        } catch (err) {
-                            console.log(
-                                chalk.yellow(
-                                    `写入 apk-pending.json 失败（可忽略，不影响本次打包）：${err.message}`
-                                )
-                            );
-                        }
-
-                        try {
-                            await withTimeout(
-                                client.sendMessage(chatId, {
-                                    message: branchPackageExpect.escapeHtml(msg),
-                                    parseMode: 'html',
-                                    linkPreview: false,
-                                }),
-                                TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
-                                `Telegram sendMessage(压缩包检测) ${actualBranchName}`,
-                            );
-                        } catch (error) {
-                            try {
-                                await client.sendMessage(chatId, { message: msg, linkPreview: false });
-                            } catch (err) {
-                                console.log(chalk.yellow('发送压缩包检测结果失败:', err.message));
-                            }
-                        }
-
-                        if (pkgWarn.html) {
-                            await sendPackageMismatchAlert(chatId, {
-                                fileName,
-                                branchName: actualBranchName,
-                                pkgWarn,
-                            });
-                        }
-                    } else {
-                        const errorMsg =
-                            `📦 ${fileName}\n` +
-                            `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
-                            `❌ 未检测到 packageId 配置`;
-                        console.log(chalk.red(`❌ 分支 ${actualBranchName} 当前分支 未检测到packageId配置`));
-
-                        try {
-                            await client.sendMessage(chatId, {
-                                message: errorMsg,
-                                parseMode: 'Markdown'
-                            });
-                        } catch (error) {
-                            try {
-                                await client.sendMessage(chatId, {
-                                    message: `⚠️ 配置检测\n\n🌿 分支: ${branchName}\n❌ 未检测到 packageId 配置`
-                                });
-                            } catch (err) {
-                                console.log(chalk.yellow('发送消息失败:', err.message));
-                            }
-                        }
-                    }
+                    await ensureProjectOnBranchForAnalyze(project, actualBranchName);
+                    await deliverZipConfigAnalyze({
+                        fileName,
+                        actualBranchName,
+                        project,
+                        chatId,
+                        branchName,
+                    });
                 } catch (error) {
-                    console.error(chalk.red(`处理文件失败: ${error.message}`));
-
+                    const msg = (error && error.message) || String(error);
+                    if (/Pull 多次失败/i.test(msg)) {
+                        console.log(
+                            chalk.red(
+                                `❌ Pull 多次失败 ${project.name}/${actualBranchName}: ${msg}`,
+                            ),
+                        );
+                        return;
+                    }
+                    console.error(chalk.red(`处理文件失败: ${msg}`));
                     try {
                         await client.sendMessage(chatId, {
-                            message: `处理文件失败: ${error.message}`
+                            message: `处理文件失败: ${msg}`,
                         });
                     } catch (err) {
                         console.log(chalk.yellow('发送消息失败:', err.message));
                     }
+                } finally {
+                    await cleanupLocalBranchesInGitLock(project);
                 }
             });
         } finally {
-            // 清理本地分支（保留 main）
-            try {
-                await cleanupLocalBranches();
-            } catch (error) {
-                console.log(chalk.yellow(`清理分支失败: ${error.message}`));
-            }
-
             // 释放处理状态
             isProcessingFile = false;
 
@@ -1454,54 +1297,135 @@ function isBranchAllowed(branchName) {
         throw lastError || new Error('上传到 S3 失败（未知错误）');
     }
 
-    // 清理本地分支（保留 main / master）：对每个已配置项目各清一遍
-    async function cleanupLocalBranches() {
+    /** 该分支是否仍被 zip/APK/文件检测队列占用（避免 cleanup 删掉即将 checkout 的分支） */
+    function isBranchReservedForProject(projectName, branch) {
+        if (!projectName || !branch) return false;
+        if (
+            isBuilding &&
+            currentBuildProjectName === projectName &&
+            gitBranchMatches(currentBuildBranch, branch)
+        ) {
+            return true;
+        }
+        if (
+            isApkBuilding &&
+            currentApkBuildProjectName === projectName &&
+            gitBranchMatches(currentApkBuildBranch, branch)
+        ) {
+            return true;
+        }
+        if (
+            buildQueue.some(
+                (t) =>
+                    t.project &&
+                    t.project.name === projectName &&
+                    gitBranchMatches(t.branchName, branch),
+            )
+        ) {
+            return true;
+        }
+        if (
+            apkBuildQueue.some(
+                (t) =>
+                    t.projectName === projectName && gitBranchMatches(t.branchName, branch),
+            )
+        ) {
+            return true;
+        }
+        if (
+            fileProcessQueue.some(
+                (t) =>
+                    t.project &&
+                    t.project.name === projectName &&
+                    gitBranchMatches(t.actualBranchName || t.branchName, branch),
+            )
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    function hasPendingWorkForProject(projectName) {
+        if (!projectName) return false;
+        if (isBuilding && currentBuildProjectName === projectName) return true;
+        if (isApkBuilding && currentApkBuildProjectName === projectName) return true;
+        if (isProcessingFile) {
+            const busy = fileProcessQueue.some((t) => t.project && t.project.name === projectName);
+            if (busy) return true;
+        }
+        if (buildQueue.some((t) => t.project && t.project.name === projectName)) return true;
+        if (apkBuildQueue.some((t) => t.projectName === projectName)) return true;
+        return false;
+    }
+
+    // 清理单个项目本地分支（须在 enqueueProjectGitWork 内调用）
+    async function cleanupLocalBranchesForProject(proj) {
+        if (!proj || !proj.builder) return;
+
+        console.log(chalk.cyan(`🧹 清理本地分支 [${proj.name}]（保留 main/master）...`));
+
+        const branchesResult = await proj.builder.runCommand('git branch');
+        if (!branchesResult.success) {
+            console.log(chalk.yellow(`⚠ [${proj.name}] 获取分支列表失败`));
+            return;
+        }
+
+        const branches = branchesResult.output
+            .split('\n')
+            .map((b) => b.trim().replace(/^\*\s*/, ''))
+            .filter((b) => b.length > 0)
+            .filter((b) => b !== 'main' && b !== 'master');
+
+        if (branches.length === 0) {
+            console.log(chalk.gray(`✓ [${proj.name}] 没有需要清理的分支`));
+            return;
+        }
+
+        let deletedCount = 0;
+        for (const branch of branches) {
+            if (isBranchReservedForProject(proj.name, branch)) {
+                console.log(chalk.gray(`跳过删除 [${proj.name}] ${branch}（队列或构建中仍占用）`));
+                continue;
+            }
+
+            const deleteResult = await proj.builder.runCommand(`git branch -D ${branch}`);
+            if (deleteResult.success) {
+                deletedCount++;
+                console.log(chalk.gray(`✓ [${proj.name}] 已删除分支: ${branch}`));
+            } else {
+                console.log(chalk.yellow(`⚠ [${proj.name}] 删除分支失败: ${branch} - ${deleteResult.error}`));
+            }
+        }
+
+        if (deletedCount > 0) {
+            console.log(chalk.green(`✓ [${proj.name}] 已清理 ${deletedCount} 个本地分支`));
+        }
+    }
+
+    async function cleanupLocalBranchesInGitLock(project) {
+        if (!project || !project.name) return;
+        if (hasPendingWorkForProject(project.name)) {
+            console.log(chalk.gray(`[${project.name}] 跳过清理本地分支：仍有 zip/APK/检测任务排队或执行中`));
+            return;
+        }
+        await enqueueProjectGitWork(project.name, () => cleanupLocalBranchesForProject(project));
+    }
+
+    async function cleanupAllProjectsWhenIdle() {
+        if (
+            isBuilding ||
+            isApkBuilding ||
+            isProcessingFile ||
+            buildQueue.length > 0 ||
+            apkBuildQueue.length > 0 ||
+            fileProcessQueue.length > 0
+        ) {
+            console.log(chalk.gray('跳过全局清理本地分支：仍有任务队列未清空'));
+            return;
+        }
         for (const proj of projects) {
-            if (!proj || !proj.builder) {
-                continue;
-            }
-
-            console.log(chalk.cyan(`🧹 清理本地分支 [${proj.name}]（保留 main/master）...`));
-
-            const branchesResult = await proj.builder.runCommand('git branch');
-            if (!branchesResult.success) {
-                console.log(chalk.yellow(`⚠ [${proj.name}] 获取分支列表失败`));
-                continue;
-            }
-
-            const branches = branchesResult.output
-                .split('\n')
-                .map(b => b.trim())
-                .filter(b => b.length > 0 && !b.startsWith('*'))
-                .filter(b => b !== 'main' && b !== 'master');
-
-            if (branches.length === 0) {
-                console.log(chalk.gray(`✓ [${proj.name}] 没有需要清理的分支`));
-                continue;
-            }
-
-            let deletedCount = 0;
-            for (const branch of branches) {
-                if (
-                    isBuilding &&
-                    currentBuildProjectName === proj.name &&
-                    currentBuildBranch === branch
-                ) {
-                    console.log(chalk.gray(`跳过删除 [${proj.name}] ${branch}（正在 zip 构建中）`));
-                    continue;
-                }
-
-                const deleteResult = await proj.builder.runCommand(`git branch -D ${branch}`);
-                if (deleteResult.success) {
-                    deletedCount++;
-                    console.log(chalk.gray(`✓ [${proj.name}] 已删除分支: ${branch}`));
-                } else {
-                    console.log(chalk.yellow(`⚠ [${proj.name}] 删除分支失败: ${branch} - ${deleteResult.error}`));
-                }
-            }
-
-            if (deletedCount > 0) {
-                console.log(chalk.green(`✓ [${proj.name}] 已清理 ${deletedCount} 个本地分支`));
+            if (proj && proj.name) {
+                await cleanupLocalBranchesInGitLock(proj);
             }
         }
     }
@@ -1565,53 +1489,23 @@ function isBranchAllowed(branchName) {
 
                 await enqueueProjectGitWork(project.name, async () => {
                     try {
-                        const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
-                        let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
+                        await ensureProjectOnBranchForAnalyze(project, actualBranchName);
 
-                        if (originalBranch === actualBranchName) {
-                            console.log(chalk.gray(`当前已在项目 ${project.name} 的分支 ${actualBranchName}，拉取最新代码...`));
-                        } else {
-                            if (config.build.autoFetchPull) {
-                                console.log(chalk.cyan(`📥 [${project.name}] 获取远程分支信息...`));
-                                const fetchResult = await project.builder.runCommand('git fetch --all');
-                                if (!fetchResult.success) {
-                                    console.log(chalk.yellow(`⚠ [${project.name}] Fetch 失败，继续尝试切换分支: ${fetchResult.error}`));
-                                } else {
-                                    console.log(chalk.green(`✓ [${project.name}] Fetch 完成`));
-                                }
-                            }
-
-                            await safeCheckoutBranch(project, actualBranchName);
+                        const headBeforeRead = await getProjectGitHeadBranch(project);
+                        if (!gitBranchMatches(headBeforeRead, actualBranchName)) {
+                            userBotLog.append(
+                                'DETECT',
+                                `拒绝输出检测结果 分支错位 ${project.name} expected=${actualBranchName} HEAD=${headBeforeRead}`,
+                            );
+                            console.log(
+                                chalk.red(
+                                    `❌ [${project.name}] 检测中止：HEAD(${headBeforeRead}) 与目标分支(${actualBranchName})不一致`,
+                                ),
+                            );
+                            return;
                         }
 
-                        if (config.build.autoFetchPull) {
-                            console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
-                            const pullMaxAttempts = 3;
-                            const pullDelayMs = 3000;
-                            let pullResult = null;
-                            for (let attempt = 1; attempt <= pullMaxAttempts; attempt++) {
-                                pullResult = await project.builder.runCommand('git pull');
-                                if (pullResult && pullResult.success) break;
-                                if (attempt < pullMaxAttempts) {
-                                    await new Promise(r => setTimeout(r, pullDelayMs));
-                                }
-                            }
-
-                            if (!pullResult || !pullResult.success) {
-                                const errDetail =
-                                    (pullResult && pullResult.error) || '未知错误';
-                                console.log(chalk.red(`❌ [${project.name}] Pull 多次失败: ${errDetail}`));
-                                userBotLog.append(
-                                    'DETECT',
-                                    `Pull 失败不输出检测结果 ${project.name}/${actualBranchName}: ${errDetail}`,
-                                );
-                                // 不写入 results，汇总消息中不展示「未能拉取」类说明
-                                return;
-                            }
-                            console.log(chalk.green(`✓ [${project.name}] 代码已更新到最新`));
-                        }
-
-                        console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件...`));
+                        console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件（HEAD=${headBeforeRead}）...`));
                         const result = await readPackageIdFromBranch(project.path, actualBranchName);
 
                         if (result.success) {
@@ -1656,21 +1550,24 @@ function isBranchAllowed(branchName) {
                             console.log(chalk.red(`❌ [${project.name}] 分支 ${actualBranchName} 未检测到 packageId 配置`));
                         }
                     } catch (error) {
+                        const msg = (error && error.message) || String(error);
+                        if (/Pull 多次失败/i.test(msg)) {
+                            userBotLog.append(
+                                'DETECT',
+                                `Pull 失败不输出检测结果 ${project.name}/${actualBranchName}: ${msg}`,
+                            );
+                            console.log(chalk.red(`❌ [${project.name}] Pull 失败: ${msg}`));
+                            return;
+                        }
                         results.push({
                             projectName: project.name,
                             branchName: info.actualBranchName,
                             success: false,
-                            error: error.message
+                            error: msg,
                         });
-                        console.error(chalk.red(`检测分支 ${info.actualBranchName} 失败: ${error.message}`));
+                        console.error(chalk.red(`检测分支 ${info.actualBranchName} 失败: ${msg}`));
                     }
                 });
-
-                try {
-                    await cleanupLocalBranches();
-                } catch (error) {
-                    console.log(chalk.yellow(`清理分支失败: ${error.message}`));
-                }
             }
 
             // 汇总结果并发送消息（Pull 失败等未进入 results 的分支不向群内输出）
@@ -1766,9 +1663,8 @@ function isBranchAllowed(branchName) {
                 console.log(chalk.yellow('发送消息失败:', err.message));
             }
         } finally {
-            // 最后清理一次 WG-WEB 中的本地分支
             try {
-                await cleanupLocalBranches();
+                await cleanupAllProjectsWhenIdle();
             } catch (error) {
                 console.log(chalk.yellow(`清理分支失败: ${error.message}`));
             }
@@ -1836,6 +1732,215 @@ function isBranchAllowed(branchName) {
             }
         }
         return null;
+    }
+
+    async function getProjectGitHeadBranch(project) {
+        const r = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
+        return r.success ? String(r.output || '').trim() : '';
+    }
+
+    function gitBranchMatches(actual, expected) {
+        const a = (actual || '').trim().toLowerCase();
+        const e = (expected || '').trim().toLowerCase();
+        return Boolean(a && e && a === e);
+    }
+
+    /** 压缩包配置检测：切分支 + pull，并在读取 config 前确认 HEAD 与目标一致 */
+    async function ensureProjectOnBranchForAnalyze(project, targetBranch) {
+        const target = (targetBranch || '').trim();
+        if (!target) {
+            throw new Error('目标分支名为空');
+        }
+
+        let head = await getProjectGitHeadBranch(project);
+        if (!gitBranchMatches(head, target)) {
+            if (config.build.autoFetchPull) {
+                console.log(chalk.cyan(`📥 [${project.name}] 获取远程分支信息...`));
+                const fetchResult = await project.builder.runCommand('git fetch --all');
+                if (!fetchResult.success) {
+                    console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支...`));
+                } else {
+                    console.log(chalk.green('✓ Fetch 完成'));
+                }
+            }
+            await safeCheckoutBranch(project, target);
+            head = await getProjectGitHeadBranch(project);
+        } else {
+            console.log(chalk.gray(`当前已在分支 ${target}，拉取最新代码...`));
+        }
+
+        if (config.build.autoFetchPull) {
+            console.log(chalk.cyan(`📥 [${project.name}] 拉取分支最新代码...`));
+            const pullMaxAttempts = 3;
+            const pullDelayMs = 3000;
+            let pullResult = null;
+            for (let attempt = 1; attempt <= pullMaxAttempts; attempt++) {
+                pullResult = await project.builder.runCommand('git pull');
+                if (pullResult && pullResult.success) break;
+                if (attempt < pullMaxAttempts) {
+                    await new Promise((r) => setTimeout(r, pullDelayMs));
+                }
+            }
+            if (!pullResult || !pullResult.success) {
+                const errDetail = (pullResult && pullResult.error) || '未知错误';
+                userBotLog.append(
+                    'ANALYZE',
+                    `Pull 失败不输出检测结果 ${project.name}/${target}: ${errDetail}`,
+                );
+                throw new Error(`Pull 多次失败: ${errDetail}`);
+            }
+            console.log(chalk.green('✓ 代码已更新到最新'));
+        }
+
+        head = await getProjectGitHeadBranch(project);
+        if (!gitBranchMatches(head, target)) {
+            await safeCheckoutBranch(project, target);
+            head = await getProjectGitHeadBranch(project);
+        }
+        if (!gitBranchMatches(head, target)) {
+            throw new Error(
+                `Git 工作区分支与目标不一致（目标 ${target}，当前 ${head || '未知'}）`,
+            );
+        }
+    }
+
+    /**
+     * 在已确认 HEAD 与 actualBranchName 一致后读取 config 并发送压缩包检测结果（调用方需在 Git 串行锁内）
+     */
+    async function deliverZipConfigAnalyze({ fileName, actualBranchName, project, chatId, branchName }) {
+        const head = await getProjectGitHeadBranch(project);
+        if (!gitBranchMatches(head, actualBranchName)) {
+            const detail = `expected=${actualBranchName} HEAD=${head || '?'}`;
+            userBotLog.append('ANALYZE', `拒绝输出检测结果 分支错位 ${project.name} ${detail} file=${fileName}`);
+            console.log(
+                chalk.red(
+                    `❌ [${project.name}] 压缩包检测中止：工作区分支(${head})与目标(${actualBranchName})不一致，避免误报`,
+                ),
+            );
+            return;
+        }
+
+        console.log(chalk.cyan(`📖 [${project.name}] 读取配置文件（HEAD=${head}）...`));
+        const result = await readPackageIdFromBranch(project.path, actualBranchName);
+
+        if (result.success) {
+            const envText =
+                result.debug !== undefined ? (result.debug ? '测试服' : '正式服') : '未知';
+            const debugFlagText =
+                result.debug !== undefined ? String(result.debug) : '未检测到';
+            const appName = result.appName || '未检测到';
+            const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
+
+            let msg =
+                `📦 ${fileName}\n` +
+                `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
+                `📱 APK: ${appName}\n` +
+                `🆔 Package: ${result.packageId}\n` +
+                `🎮 环境: ${envText} (debug=${debugFlagText})`;
+
+            if (result.debug !== false) {
+                msg +=
+                    `\n\n⚠️ 警告：debug 不为 false（当前：${debugFlagText}），非正式服或未检测到，请确认环境与分包是否正确。`;
+            }
+
+            const seenDomains = new Set();
+            const uniqueDomains = mainDomains
+                .map((d) => String(d).trim())
+                .filter(Boolean)
+                .filter((d) => {
+                    const key = d.toLowerCase();
+                    if (seenDomains.has(key)) return false;
+                    seenDomains.add(key);
+                    return true;
+                });
+
+            if (uniqueDomains.length > 0) {
+                msg += `\n\n🌐 主域名:\n`;
+                uniqueDomains.forEach((d) => {
+                    msg += `- ${d}\n`;
+                });
+                msg = msg.trimEnd();
+            }
+
+            const pkgWarn = branchPackageExpect.buildExpectationWarnings(actualBranchName, {
+                packageId: result.packageId,
+                debug: result.debug,
+            });
+            if (pkgWarn.plain) {
+                console.log(chalk.red(pkgWarn.plain.trim()));
+            }
+
+            console.log(
+                chalk.green(
+                    `✅ 分支 ${actualBranchName} packageId: ${result.packageId}, appName: ${appName}, debug: ${result.debug !== undefined ? result.debug : '未检测到'}`,
+                ),
+            );
+
+            pendingApkOptions.set(actualBranchName, {
+                packageId: result.packageId,
+                appName,
+                appNameSlug: result.appNameSlug,
+                primaryDomain: result.primaryDomain,
+            });
+
+            try {
+                apkTracker.addOrUpdate(actualBranchName, {
+                    source: 'analyzed',
+                    fileName,
+                    chatId,
+                    packageId: result.packageId || null,
+                    appName,
+                    appNameSlug: result.appNameSlug || null,
+                    primaryDomain: result.primaryDomain || null,
+                });
+            } catch (err) {
+                console.log(chalk.yellow(`写入 apk-pending.json 失败（可忽略）: ${err.message}`));
+            }
+
+            try {
+                await withTimeout(
+                    client.sendMessage(chatId, {
+                        message: branchPackageExpect.escapeHtml(msg),
+                        parseMode: 'html',
+                        linkPreview: false,
+                    }),
+                    TELEGRAM_SEND_MESSAGE_TIMEOUT_MS,
+                    `Telegram sendMessage(压缩包检测) ${actualBranchName}`,
+                );
+            } catch (error) {
+                try {
+                    await client.sendMessage(chatId, { message: msg, linkPreview: false });
+                } catch (err) {
+                    console.log(chalk.yellow('发送压缩包检测结果失败:', err.message));
+                }
+            }
+
+            if (pkgWarn.html) {
+                await sendPackageMismatchAlert(chatId, {
+                    fileName,
+                    branchName: actualBranchName,
+                    pkgWarn,
+                });
+            }
+            return;
+        }
+
+        const errorMsg =
+            `📦 ${fileName}\n` +
+            `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
+            `❌ 未检测到 packageId 配置`;
+        console.log(chalk.red(`❌ 分支 ${actualBranchName} 未检测到 packageId 配置`));
+        try {
+            await client.sendMessage(chatId, { message: errorMsg, parseMode: 'Markdown' });
+        } catch (error) {
+            try {
+                await client.sendMessage(chatId, {
+                    message: `⚠️ 配置检测\n\n🌿 分支: ${branchName || actualBranchName}\n❌ 未检测到 packageId 配置`,
+                });
+            } catch (err) {
+                console.log(chalk.yellow('发送消息失败:', err.message));
+            }
+        }
     }
 
     // 安全切换到指定分支（自动处理未解决合并/索引冲突，并在必要时从远程创建分支）
@@ -2269,50 +2374,17 @@ function isBranchAllowed(branchName) {
         let logoLocalPath = '';
         let logoSourceType = 'primary';
 
-        const currentBranch = await project.builder.runCommand('git rev-parse --abbrev-ref HEAD');
-        let originalBranch = currentBranch.success ? currentBranch.output.trim() : null;
-
-        // 1. 切分支 + 拉代码
-        if (originalBranch !== branchName) {
-            if (config.build.autoFetchPull) {
-                console.log(chalk.cyan('📥 获取远程分支信息...'));
-                const fetchResult = await project.builder.runCommand('git fetch --all');
-                if (!fetchResult.success) {
-                    console.log(chalk.yellow(`⚠ Fetch 失败，继续尝试切换分支: ${fetchResult.error}`));
-                } else {
-                    console.log(chalk.green('✓ Fetch 完成'));
-                }
-            }
-
-            await safeCheckoutBranch(project, branchName);
-        } else {
-            console.log(chalk.gray(`当前已在分支 ${branchName}`));
+        await ensureProjectOnBranchForAnalyze(project, branchName);
+        const head = await getProjectGitHeadBranch(project);
+        if (!gitBranchMatches(head, branchName)) {
+            throw new Error(
+                `Git 工作区分支与 APK 目标不一致（目标 ${branchName}，当前 ${head || '未知'}）`,
+            );
         }
 
-        if (config.build.autoFetchPull) {
-            console.log(chalk.cyan('📥 拉取分支最新代码...'));
-            const pullMaxAttempts = 3;
-            const pullDelayMs = 3000;
-            let pullResult = null;
-            for (let attempt = 1; attempt <= pullMaxAttempts; attempt++) {
-                pullResult = await project.builder.runCommand('git pull');
-                if (pullResult && pullResult.success) break;
-                if (attempt < pullMaxAttempts) {
-                    await new Promise(r => setTimeout(r, pullDelayMs));
-                }
-            }
-
-            if (!pullResult || !pullResult.success) {
-                throw new Error(
-                    `Pull 多次失败无法确认最新代码 (${(pullResult && pullResult.error) || '未知错误'})`,
-                );
-            }
-            console.log(chalk.green('✓ 代码已更新到最新'));
-        }
-
-        // 2. 从当前分支配置读取 appDownPath / proxyShareUrlList / packageId
+        // 从当前分支配置读取 appDownPath / proxyShareUrlList / packageId
         try {
-            console.log(chalk.cyan('📖 从当前分支配置解析 appDownPath / proxyShareUrlList...'));
+            console.log(chalk.cyan(`📖 从当前分支配置解析（HEAD=${head}）...`));
             const cfg = await readPackageIdFromBranch(project.path, branchName);
             if (cfg && cfg.success) {
                 appName = cfg.appName || `app-${branchName}.apk`;
@@ -3142,46 +3214,10 @@ function isBranchAllowed(branchName) {
                 log(chalk.red('上传多次失败，放弃发送构建产物到 Telegram'));
             }
 
-            // 构建完成后，根据配置决定是否执行自动压缩包分析
-            if (!ENABLE_ZIP_ANALYZE) {
-                if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
-                    fs.unlinkSync(result.zipFilePath);
-                    log('已清理临时文件');
-                }
-                continue;
-            }
-
-            // 构建完成后，模拟“上传压缩包”触发后续检测流程
-            try {
-                if (project && chatId && result && (result.zipFileName || result.zipFilePath)) {
-                    const fileName =
-                        result.zipFileName ||
-                        (result.zipFilePath ? path.basename(result.zipFilePath) : `${branchName}.zip`);
-
-                    const fileTask = {
-                        fileName,
-                        branchName,
-                        actualBranchName: branchName,
-                        project,
-                        chatId,
-                        timestamp: new Date(),
-                    };
-
-                    if (shouldQueueFileAnalyzeForProject(project)) {
-                        fileProcessQueue.push(fileTask);
-                    } else {
-                        await processFileTask(fileTask);
-                    }
-                } else {
-                    log(chalk.gray('跳过自动压缩包检测：缺少 project/chatId 或 zip 信息'));
-                }
-            } catch (e) {
-                log(chalk.yellow('自动触发压缩包检测失败（可忽略）:'), e.message);
-            } finally {
-                if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
-                    fs.unlinkSync(result.zipFilePath);
-                    log('已清理临时文件');
-                }
+            // 配置检测已在 executeBuild 的 Git 串行锁内完成（构建结束瞬间、下一分支尚未 checkout）
+            if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
+                fs.unlinkSync(result.zipFilePath);
+                log('已清理临时文件');
             }
         }
 
@@ -3267,9 +3303,42 @@ function isBranchAllowed(branchName) {
             },
         };
 
-        const result = await enqueueProjectGitWork(project.name, () =>
-            buildRunner.fullBuild(branchName, updateProgress, fullBuildOptions),
-        );
+        const result = await enqueueProjectGitWork(project.name, async () => {
+            const buildResult = await buildRunner.fullBuild(
+                branchName,
+                updateProgress,
+                fullBuildOptions,
+            );
+            // 构建刚结束仍在目标分支：同一把 Git 锁内做压缩包配置检测，避免下一分支构建抢先 checkout 导致 tc-xangai 读到 tc-futebol
+            if (buildResult && buildResult.success && ENABLE_ZIP_ANALYZE && chatId) {
+                const analyzeFileName =
+                    buildResult.zipFileName || `${branchName}.zip`;
+                try {
+                    await deliverZipConfigAnalyze({
+                        fileName: analyzeFileName,
+                        actualBranchName: branchName,
+                        project,
+                        chatId,
+                        branchName,
+                    });
+                    userBotLog.append(
+                        'ANALYZE',
+                        `构建后同锁检测完成 ${project.name}/${branchName} file=${analyzeFileName}`,
+                    );
+                } catch (analyzeErr) {
+                    userBotLog.append(
+                        'ANALYZE',
+                        `构建后同锁检测失败 ${project.name}/${branchName}: ${(analyzeErr && analyzeErr.message) || analyzeErr}`,
+                    );
+                    console.log(
+                        chalk.yellow(
+                            `[${branchName}] 构建后配置检测失败（可忽略）: ${(analyzeErr && analyzeErr.message) || analyzeErr}`,
+                        ),
+                    );
+                }
+            }
+            return buildResult;
+        });
 
         // 将本次 zip 构建结果写入日志，便于排查「分支 ↔ zip」是否错位
         try {
