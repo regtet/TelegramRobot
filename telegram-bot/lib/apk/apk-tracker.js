@@ -1,7 +1,5 @@
 const fs = require('fs');
-const path = require('path');
-
-const DB_FILE = path.join(__dirname, '..', '..', 'apk-pending.json');
+const { apkPendingFile: DB_FILE } = require('../paths');
 
 function readDb() {
   try {
@@ -16,9 +14,19 @@ function readDb() {
   }
 }
 
+function toJsonSafe(value) {
+  if (value == null) return null;
+  if (typeof value === 'bigint') return value.toString();
+  return value;
+}
+
 function writeDb(list) {
   const safe = Array.isArray(list) ? list : [];
-  fs.writeFileSync(DB_FILE, JSON.stringify(safe, null, 2), 'utf8');
+  fs.writeFileSync(
+    DB_FILE,
+    JSON.stringify(safe, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
+    'utf8',
+  );
 }
 
 function normalizeBranch(branch) {
@@ -56,8 +64,8 @@ function addOrUpdate(branch, extra = {}) {
     branch: b,
     source: extra.source || 'auto', // auto | manual
     fileName: extra.fileName ?? list[idx]?.fileName ?? null,
-    chatId: extra.chatId ?? list[idx]?.chatId ?? null,
-    messageId: extra.messageId ?? list[idx]?.messageId ?? null,
+    chatId: toJsonSafe(extra.chatId ?? list[idx]?.chatId ?? null),
+    messageId: toJsonSafe(extra.messageId ?? list[idx]?.messageId ?? null),
     // 下面这些字段用于 APK 打包所需的上下文信息（根据需要逐步补充）
     packageId: extra.packageId ?? list[idx]?.packageId ?? null,
     appName: extra.appName ?? list[idx]?.appName ?? null,

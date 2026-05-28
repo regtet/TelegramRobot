@@ -15,7 +15,7 @@ npm start
 使用 PM2 后台运行：
 ```powershell
 npm install -g pm2
-pm2 start index-user.js --name wg-builder
+pm2 start index.js --name wg-builder
 pm2 save
 pm2 startup  # 开机自启
 ```
@@ -80,7 +80,7 @@ autoInstall: false
 #### 清理构建缓存
 定期清理 builds 目录：
 ```powershell
-cd telegram-bot/builds
+cd telegram-bot/var/builds
 rm *.zip
 ```
 
@@ -134,12 +134,12 @@ git pull
 
 ### 1. 保护敏感信息
 - ✅ 不要把 `.env` 文件提交到 Git
-- ✅ 不要把 `session.txt` 分享给别人
+- ✅ 不要把 `data/session.txt` 分享给别人
 - ✅ 不要公开你的 API_ID 和 API_HASH
 
 ### 2. 定期更换凭证
 如果怀疑账号泄露：
-1. 删除 `session.txt`
+1. 删除 `data/session.txt`
 2. 重新登录
 3. 或者在 https://my.telegram.org/apps 重新创建应用
 
@@ -220,7 +220,7 @@ npm run build  # 手动测试
 1. 查看控制台/PM2 日志
 2. 检查网络连接
 3. 重启程序
-4. 如果还不行，删除 session.txt 重新登录
+4. 如果还不行，删除 data/session.txt 重新登录
 
 ---
 
@@ -270,7 +270,7 @@ npm start
 - ✅ 根据网络情况调整配置
 
 **安全第一：**
-- ⚠️ 保护好 .env 和 session.txt
+- ⚠️ 保护好 .env 和 data/session.txt
 - ⚠️ 不要在公开群组使用
 - ⚠️ 定期检查账号安全
 

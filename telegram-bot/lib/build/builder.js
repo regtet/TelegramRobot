@@ -116,12 +116,16 @@ class Builder {
    * @param {Array<string>} branchNames - 分支名数组
    * @returns {Promise<{valid: Array<string>, invalid: Array<string>}>} - 返回有效和无效的分支
    */
-  async validateBranches(branchNames) {
-    // 清除缓存，确保获取最新分支列表
-    this._branchesCache = null;
+  async validateBranches(branchNames, options = {}) {
+    const reuseCache = Boolean(options && options.reuseCache);
+    if (!reuseCache) {
+      this._branchesCache = null;
+    }
 
     try {
-      this._branchesCache = await this.getBranches();
+      if (!this._branchesCache) {
+        this._branchesCache = await this.getBranches();
+      }
     } catch (error) {
       console.log(chalk.yellow('⚠ 无法获取分支列表，将在执行时验证'));
       // 如果获取失败，返回所有分支为待验证状态
@@ -337,7 +341,10 @@ class Builder {
     }
 
     // 创建 builds 目录
-    const buildsDir = path.resolve(__dirname, '..', '..', this.config.zipOutputPath);
+    const zipOut = this.config.zipOutputPath;
+    const buildsDir = path.isAbsolute(zipOut)
+      ? zipOut
+      : path.resolve(__dirname, '..', '..', zipOut);
     if (!fs.existsSync(buildsDir)) {
       fs.mkdirSync(buildsDir, { recursive: true });
     }

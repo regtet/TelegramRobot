@@ -1,19 +1,10 @@
 {
-  "//": "只监听入口与 lib 下代码，忽略运行时文件，避免不停重启",
-  "watch": [
-    "index.js",
-    "index-user.js",
-    "lib"
-  ],
+  "//": "只监听入口与 lib 下代码，忽略 data/ var/ 运行时目录",
+  "watch": ["index.js", "lib"],
   "ignore": [
-    "session.txt",
-    "apk-pending.json",
-    "apk-built-history.json",
-    "branch-package-expect.json",
-    "branchList.json",
-    "logs",
-    "tmp",
-    "builds"
+    "data",
+    "var",
+    "docs",
+    "node_modules"
   ]
 }
-

@@ -3,11 +3,11 @@
  * 在能访问 Telegram 的环境中运行，获取 session 字符串
  */
 
-const path = require('path');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const input = require('input');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const paths = require('../lib/paths');
+require('dotenv').config({ path: paths.envFile });
 
 const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
@@ -41,7 +41,7 @@ if (!apiId || !apiHash) {
   console.log('\n✅ 登录成功！');
 
   const session = client.session.save();
-  console.log('\n请复制以下 Session String 到目标设备的 session.txt 文件中:');
+  console.log('\n请复制以下 Session String 到 data/session.txt 文件中:');
   console.log('\n' + '='.repeat(50));
   console.log(session);
   console.log('='.repeat(50));

@@ -48,6 +48,37 @@ function extractBranchNameFromFileName(fileName) {
     return nameWithoutExt;
 }
 
+/**
+ * 去掉 JS 源码中的行注释与块注释，避免把 proxyShareUrlList 里已注释的 URL 当成有效配置
+ */
+function stripJsCommentsForParsing(text) {
+    const withoutBlock = String(text || '').replace(/\/\*[\s\S]*?\*\//g, '');
+    return withoutBlock
+        .split('\n')
+        .map((line) => {
+            let out = '';
+            let inSingle = false;
+            let inDouble = false;
+            for (let i = 0; i < line.length; i++) {
+                const c = line[i];
+                const next = line[i + 1];
+                if (c === "'" && !inDouble) {
+                    inSingle = !inSingle;
+                    out += c;
+                } else if (c === '"' && !inSingle) {
+                    inDouble = !inDouble;
+                    out += c;
+                } else if (!inSingle && !inDouble && c === '/' && next === '/') {
+                    break;
+                } else {
+                    out += c;
+                }
+            }
+            return out;
+        })
+        .join('\n');
+}
+
 /** 从 config 中的完整 URL 提取主机名（小写、无端口） */
 function hostFromConfigUrl(url) {
     const m = String(url || '').match(/^https?:\/\/([^\/#'"?]+)/i);
@@ -185,7 +216,7 @@ async function readPackageIdFromBranch(projectPath, branchName) {
         // 尝试解析 proxyShareUrlList（主域名列表）
         const proxySectionMatch = fileContent.match(/proxyShareUrlList\s*:\s*\[([\s\S]*?)\]/);
         if (proxySectionMatch && proxySectionMatch[1]) {
-            const section = proxySectionMatch[1];
+            const section = stripJsCommentsForParsing(proxySectionMatch[1]);
             const proxyUrls = [];
             const fullUrlRegex = /['"](https?:\/\/[^'"]+)['"]/g;
             let fullM;
@@ -208,7 +239,7 @@ async function readPackageIdFromBranch(projectPath, branchName) {
         // 尝试解析 independentUrlList（备用域名列表，phone=true 显示手机号）
         const indepSectionMatch = fileContent.match(/independentUrlList\s*:\s*\[([\s\S]*?)\]/);
         if (indepSectionMatch && indepSectionMatch[1]) {
-            const section = indepSectionMatch[1];
+            const section = stripJsCommentsForParsing(indepSectionMatch[1]);
             const objRegex = /\{[^}]*\}/g;
             const map = new Map(); // domain(去掉www) -> { domain, phone }
             let m;

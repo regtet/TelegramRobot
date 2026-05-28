@@ -1,6 +1,7 @@
 WG-WEB
 WGAME-WEB
 /telegram-bot/.env
-/telegram-bot/apk-pending.json
-/telegram-bot/branchList.json
-/telegram-bot/logs/
+/telegram-bot/data/session.txt
+/telegram-bot/data/apk-pending.json
+/telegram-bot/data/branchList.json
+/telegram-bot/var/

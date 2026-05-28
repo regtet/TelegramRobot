@@ -1,8 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
-/** 所有运行时日志文件统一放在 telegram-bot/logs/ */
-const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
+const { logsDir: LOGS_DIR } = require('../paths');
 
 function ensureLogsDir() {
     if (!fs.existsSync(LOGS_DIR)) {

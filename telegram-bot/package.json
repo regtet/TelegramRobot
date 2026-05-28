@@ -1,17 +1,16 @@
 {
     "name": "wg-web-telegram-builder",
     "version": "1.0.0",
-    "description": "Telegram Bot for WG-WEB automatic building",
+    "description": "Telegram userbot for WG-WEB / WGAME-WEB automatic build and APK packaging",
     "main": "index.js",
     "scripts": {
-        "dev:user": "nodemon index-user.js",
-        "dev:bot": "nodemon index.js",
-        "dev": "concurrently \"yarn dev:user\" \"yarn dev:bot\"",
+        "dev": "nodemon index.js",
+        "start": "node index.js",
         "session": "node scripts/get-session.js"
     },
     "keywords": [
         "telegram",
-        "bot",
+        "userbot",
         "build",
         "automation"
     ],
@@ -24,14 +23,11 @@
         "chalk": "^4.1.2",
         "dotenv": "^16.3.1",
         "input": "^1.0.1",
-        "node-telegram-bot-api": "^0.66.0",
         "sharp": "^0.34.5",
         "shiki": "^4.1.0",
-        "socks-proxy-agent": "^8.0.4",
         "telegram": "^2.22.2"
     },
     "devDependencies": {
-        "concurrently": "^9.2.1",
         "nodemon": "^3.0.1"
     }
 }

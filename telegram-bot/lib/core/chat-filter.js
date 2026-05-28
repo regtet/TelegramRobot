@@ -1,5 +1,5 @@
 /**
- * Userbot 会话过滤：支持工作群 incoming + 自己发出的打包/复刻台公告（含私聊 Bot）。
+ * Userbot 会话过滤：仅处理 CHAT_ID / CHAT_IDS 中配置的会话（群或指定私聊）。
  */
 
 const { isAnnounceRelatedText } = require('../branch/branch-group-auto-parse');
@@ -21,6 +21,8 @@ function isPackRelatedCommandText(text) {
         t.startsWith('打包') ||
         t.startsWith('打包APK') ||
         t.startsWith('检测') ||
+        t.startsWith('/apk') ||
+        t === '/help' ||
         t.startsWith('取消打包') ||
         t.startsWith('取消') ||
         t.startsWith('✅ 打包 APK') ||
@@ -33,32 +35,16 @@ function isPackRelatedCommandText(text) {
  * @param {Set<string>} allowedChatIds
  * @param {string|null} selfUserId
  */
-function shouldHandleUserbotMessage(message, allowedChatIds, selfUserId) {
+function shouldHandleUserbotMessage(message, allowedChatIds, _selfUserId) {
     if (!message) return false;
 
     const chatIdStr =
         message.chatId != null && typeof message.chatId.toString === 'function'
             ? message.chatId.toString()
             : '';
-    const senderId =
-        message.senderId != null && typeof message.senderId.toString === 'function'
-            ? message.senderId.toString()
-            : '';
-    const isOutgoing = Boolean(message.out);
 
     if (!allowedChatIds || allowedChatIds.size === 0) {
         return true;
-    }
-
-    if (!isOutgoing) {
-        return allowedChatIds.has(chatIdStr);
-    }
-
-    if (selfUserId && senderId === selfUserId) {
-        const text = message.text || '';
-        if (isPackRelatedCommandText(text) || isAnnounceRelatedText(text.trim())) {
-            return true;
-        }
     }
 
     return allowedChatIds.has(chatIdStr);

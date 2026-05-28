@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const { parseEnvBool } = require('../core/env-bool');
 
-const DATA_FILE = path.join(__dirname, '..', '..', 'apk-built-history.json');
+const { apkBuiltHistoryFile: DATA_FILE } = require('../paths');
 
 function readDb() {
     try {
@@ -26,7 +27,7 @@ function makeKey(projectName, appNameSlug) {
 }
 
 function isDedupDisabled() {
-    return process.env.APK_SKIP_IF_ALREADY_BUILT === '0';
+    return !parseEnvBool('APK_SKIP_IF_ALREADY_BUILT', true);
 }
 
 function wasAlreadyBuilt(projectName, appNameSlug) {

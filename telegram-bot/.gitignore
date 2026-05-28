@@ -1,18 +1,17 @@
 node_modules/
 .env
+.env.*
+!.env.example
 *.zip
 *.log
 dist/
 
+# 持久化状态（branch-package-expect.json 可按需纳入版本库）
+data/session.txt
+data/apk-pending.json
+data/apk-built-history.json
+data/branchList.json
+data/zip-analyze-pending.json
 
-
-
-
-
-
-
-
-
-
-
-
+# 运行时目录
+var/
