@@ -51,8 +51,8 @@ const {
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
-// const ENABLE_LX_MUSIC_ON_MESSAGE = true;
-const ENABLE_LX_MUSIC_ON_MESSAGE = false;
+const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+// const ENABLE_LX_MUSIC_ON_MESSAGE = false;
 
 // LX Music 桌面版路径（请确保路径存在）
 const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
@@ -175,6 +175,9 @@ let currentBuildProjectName = '';
 let buildQueue = []; // 普通打包（zip）排队列表
 let currentBuildId = null; // 当前构建ID
 let shouldCancelBuild = false; // 取消标志
+/** 递增后使进行中的「打包」指令失效（含分支验证阶段） */
+let buildAbortToken = 0;
+let isPackPreparing = false; // 分支验证 / 入队准备阶段
 
 // APK 打包队列（按顺序执行，避免多条消息交错）
 let isApkBuilding = false;
@@ -400,6 +403,28 @@ function isBranchAllowed(branchName) {
         } finally {
             if (timer) clearTimeout(timer);
         }
+    }
+
+    /** 删除群内触发指令消息（需本账号有删消息权限；失败仅打日志，不阻断主流程） */
+    async function tryDeleteTriggerMessage(message, label = '触发') {
+        if (!message || message.id == null || message.chatId == null) return;
+        try {
+            await client.deleteMessages(message.chatId, [message.id], { revoke: true });
+            console.log(chalk.gray(`已删除${label}消息 id=${message.id}`));
+        } catch (e) {
+            console.log(chalk.yellow(`删除${label}消息失败: ${(e && e.message) || e}`));
+        }
+    }
+
+    function isBuildAborted(abortToken) {
+        if (shouldCancelBuild) return true;
+        if (abortToken != null && abortToken !== buildAbortToken) return true;
+        return false;
+    }
+
+    function requestStopAllBuilds() {
+        buildAbortToken++;
+        shouldCancelBuild = true;
     }
 
     const TELEGRAM_SEND_FILE_TIMEOUT_MS = parseInt(
@@ -922,6 +947,7 @@ function isBranchAllowed(branchName) {
                     `2️⃣ 打包多个分支（空格隔开）:\n` +
                     `   打包 V5futebol x-12 main\n\n` +
                     `3️⃣ 上传压缩包 → 自动配置检测 + 加入 APK 等待队列\n\n` +
+                    `终止打包 - 中断当前 zip 构建并清空排队\n\n` +
                     `取消打包:\n` +
                     `取消 V5futebol\n\n` +
                     `命令:\n` +
@@ -1148,6 +1174,16 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
+            // 终止当前 zip 打包（无需分支名）
+            if (trimmedText === '终止打包') {
+                if (!isUserAllowed(senderId)) {
+                    console.log(chalk.red(`拒绝访问: 用户 ${senderId} 无权限`));
+                    return;
+                }
+                await handleStopBuild(senderId, message);
+                return;
+            }
+
             // 检查是否是"检测"命令（默认关闭，仅上传压缩包时自动检测）
             if (trimmedText.startsWith('检测')) {
                 if (!ENABLE_MANUAL_DETECT) {
@@ -1280,12 +1316,23 @@ function isBranchAllowed(branchName) {
                 }
             }
 
+            await tryDeleteTriggerMessage(message, '打包');
+
+            shouldCancelBuild = false;
+            const packToken = buildAbortToken;
+            isPackPreparing = true;
+
             // 验证分支是否存在（在 WG-WEB / WGAME-WEB 两个仓库中查找）
             console.log(chalk.cyan(`\n🔍 验证分支是否存在...`));
             const resolvedBuildTargets = [];
             const invalidBuildBranches = [];
 
+            try {
             for (const item of packItems) {
+                if (isBuildAborted(packToken)) {
+                    console.log(chalk.yellow('打包已终止（验证分支期间）'));
+                    return;
+                }
                 const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
                 try {
                     const resolved = await resolveProjectAndBranch(name);
@@ -1306,6 +1353,11 @@ function isBranchAllowed(branchName) {
                     console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
                     invalidBuildBranches.push(name);
                 }
+            }
+
+            if (isBuildAborted(packToken)) {
+                console.log(chalk.yellow('打包已终止（验证分支完成后）'));
+                return;
             }
 
             if (invalidBuildBranches.length > 0) {
@@ -1364,8 +1416,18 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
+            if (isBuildAborted(packToken)) {
+                console.log(chalk.yellow('打包已终止（启动构建前）'));
+                return;
+            }
+
             // 处理多个分支（只处理新的有效分支）
             for (let i = 0; i < newTargets.length; i++) {
+                if (isBuildAborted(packToken)) {
+                    console.log(chalk.yellow('打包已终止（启动构建前）'));
+                    return;
+                }
+
                 const { project, actualBranchName, packageId } = newTargets[i];
                 const branchName = actualBranchName;
                 const buildId = Date.now().toString() + '_' + i;
@@ -1378,7 +1440,8 @@ function isBranchAllowed(branchName) {
                         packageId,
                         userId: senderId,
                         chatId: message.chatId,
-                        timestamp: new Date()
+                        timestamp: new Date(),
+                        abortToken: packToken,
                     });
                     console.log(chalk.gray(`加入队列: ${branchName} (位置 ${buildQueue.length})`));
                     continue;
@@ -1398,6 +1461,7 @@ function isBranchAllowed(branchName) {
                     try {
                         await executeBuild(project, branchName, senderId, message.chatId, {
                             packageId,
+                            abortToken: packToken,
                         });
                     } catch (error) {
                         console.error(chalk.red('打包失败:'), error);
@@ -1408,6 +1472,7 @@ function isBranchAllowed(branchName) {
                     currentBuildBranch = '';
                     currentBuildProjectName = '';
                     currentBuildId = null;
+                    shouldCancelBuild = false;
 
                     setTimeout(() => {
                         processNextInQueue();
@@ -1417,6 +1482,9 @@ function isBranchAllowed(branchName) {
             }
 
             return;
+            } finally {
+                isPackPreparing = false;
+            }
 
         } catch (error) {
             console.error(chalk.red('处理消息时出错:'), error);
@@ -2127,7 +2195,6 @@ function isBranchAllowed(branchName) {
             console.log(chalk.yellow(`打包已中断: ${branchName} (操作者: ${senderId})`));
         }
 
-        const originalLength = buildQueue.length;
         buildQueue = buildQueue.filter(task => {
             if (task.branchName === branchName) {
                 removedFromQueue++;
@@ -2142,6 +2209,35 @@ function isBranchAllowed(branchName) {
 
         if (!shouldCancelBuild && removedFromQueue === 0) {
             console.log(chalk.gray(`取消请求未找到对应任务: ${branchName}`));
+        }
+    }
+
+    /** 终止当前 zip 打包：删触发消息、中断进行中构建、清空排队 */
+    async function handleStopBuild(senderId, message) {
+        await tryDeleteTriggerMessage(message, '终止打包');
+
+        const wasBuilding = isBuilding;
+        const wasPreparing = isPackPreparing;
+        const clearedQueue = buildQueue.length;
+
+        requestStopAllBuilds();
+        buildQueue = [];
+
+        if (wasBuilding) {
+            const who =
+                currentBuildProjectName && currentBuildBranch
+                    ? `${currentBuildProjectName}/${currentBuildBranch}`
+                    : currentBuildBranch || '…';
+            console.log(chalk.yellow(`终止打包: 正在中断 ${who} (操作者: ${senderId})`));
+        }
+        if (wasPreparing) {
+            console.log(chalk.yellow(`终止打包: 已取消准备中的打包 (操作者: ${senderId})`));
+        }
+        if (clearedQueue > 0) {
+            console.log(chalk.yellow(`终止打包: 已清空排队 ${clearedQueue} 个任务`));
+        }
+        if (!wasBuilding && !wasPreparing && clearedQueue === 0) {
+            console.log(chalk.gray('终止打包: 当前无进行中的 zip 打包任务'));
         }
     }
 
@@ -3384,9 +3480,9 @@ function isBranchAllowed(branchName) {
         console.log(
             chalk.cyan(
                 `✓ 批量解析完成：有效 ${resolvedTargets.length} 个` +
-                    (resolvedTargets.length
-                        ? `（${resolvedTargets.map((t) => t.branchName).join(', ')}）`
-                        : ''),
+                (resolvedTargets.length
+                    ? `（${resolvedTargets.map((t) => t.branchName).join(', ')}）`
+                    : ''),
             ),
         );
         return { resolvedTargets, invalidBranches };
@@ -4010,6 +4106,16 @@ function isBranchAllowed(branchName) {
 
     // 执行构建流程（可复用函数，使用指定 project 的 builder）
     async function executeBuild(project, branchName, senderId, chatId, buildOptions = {}) {
+        const abortToken =
+            buildOptions.abortToken != null ? buildOptions.abortToken : buildAbortToken;
+        const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
+
+        if (isBuildAborted(abortToken)) {
+            log(chalk.yellow('任务已终止（构建开始前）'));
+            clearZipBuildBundle(chatId, branchName, '构建已取消');
+            return { cancelled: true };
+        }
+
         shouldCancelBuild = false;
         const buildRunner = project && project.builder ? project.builder : builder;
         const packageIdTarget =
@@ -4017,10 +4123,8 @@ function isBranchAllowed(branchName) {
                 ? buildOptions.packageId
                 : null;
 
-        const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
-
         const updateProgress = async (stage, percent, msg) => {
-            if (shouldCancelBuild) return;
+            if (isBuildAborted(abortToken)) return;
             const text = msg || stage || '';
             if (percent === 100 || percent % 20 === 0) {
                 log(`${percent}%`, text);
@@ -4029,11 +4133,20 @@ function isBranchAllowed(branchName) {
 
         const fullBuildOptions = {
             afterCheckout: async () => {
+                if (isBuildAborted(abortToken)) {
+                    throw new Error('BUILD_ABORTED');
+                }
                 await handleAfterCheckoutForBuild(project, branchName, chatId, packageIdTarget);
+                if (isBuildAborted(abortToken)) {
+                    throw new Error('BUILD_ABORTED');
+                }
             },
         };
 
         const result = await enqueueProjectGitWork(project.name, async () => {
+            if (isBuildAborted(abortToken)) {
+                return { success: false, error: 'BUILD_ABORTED' };
+            }
             const buildResult = await buildRunner.fullBuild(
                 branchName,
                 updateProgress,
@@ -4062,7 +4175,7 @@ function isBranchAllowed(branchName) {
             // 日志失败不影响主流程
         }
 
-        if (shouldCancelBuild) {
+        if (isBuildAborted(abortToken)) {
             log(chalk.yellow('任务已中断'));
             clearZipBuildBundle(chatId, branchName, '构建已取消');
             if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
@@ -4101,6 +4214,12 @@ function isBranchAllowed(branchName) {
         }
 
         const nextTask = buildQueue.shift();
+        if (isBuildAborted(nextTask.abortToken)) {
+            console.log(chalk.yellow(`跳过已终止的队列任务: ${nextTask.branchName}`));
+            setTimeout(() => processNextInQueue(), 200);
+            return;
+        }
+
         console.log(chalk.cyan(`\n📋 处理队列任务: ${nextTask.branchName} (剩余 ${buildQueue.length}个)`));
 
         // 设置当前构建
@@ -4113,6 +4232,7 @@ function isBranchAllowed(branchName) {
         try {
             await executeBuild(nextTask.project, nextTask.branchName, nextTask.userId, nextTask.chatId, {
                 packageId: nextTask.packageId,
+                abortToken: nextTask.abortToken,
             });
         } catch (error) {
             console.error(chalk.red('队列任务处理失败:'), error);
@@ -4123,6 +4243,7 @@ function isBranchAllowed(branchName) {
         currentBuildBranch = '';
         currentBuildProjectName = '';
         currentBuildId = null;
+        shouldCancelBuild = false;
 
         // 👉 构建刚结束时，如果有待检测文件且当前没在处理文件，也可以启动文件队列
         if (!isProcessingFile && fileProcessQueue.length > 0) {
