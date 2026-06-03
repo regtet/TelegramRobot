@@ -21,6 +21,7 @@ function isPackRelatedCommandText(text) {
         t.startsWith('打包') ||
         t.startsWith('打包APK') ||
         t.startsWith('检测') ||
+        t.startsWith('穿透') ||
         t.startsWith('/apk') ||
         t === '/help' ||
         t.startsWith('取消打包') ||

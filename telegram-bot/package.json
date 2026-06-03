@@ -23,6 +23,7 @@
         "chalk": "^4.1.2",
         "dotenv": "^16.3.1",
         "input": "^1.0.1",
+        "localtunnel": "^2.0.2",
         "sharp": "^0.34.5",
         "shiki": "^4.1.0",
         "telegram": "^2.22.2"

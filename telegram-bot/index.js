@@ -39,6 +39,7 @@ const {
     shouldHandleUserbotMessage,
 } = require('./lib/core/chat-filter');
 const { parseEnvBool } = require('./lib/core/env-bool');
+const { BranchTunnelManager } = require('./lib/dev/branch-tunnel');
 const userBotLog = require('./lib/logging/user-bot-logger');
 const apkPendingAdmin = require('./lib/apk/apk-pending-admin');
 const {
@@ -51,8 +52,8 @@ const {
 
 // 是否启用“收到群消息自动打开 LX Music”功能
 // 需要时把这个改成 true，不需要时改回 false
-const ENABLE_LX_MUSIC_ON_MESSAGE = true;
-// const ENABLE_LX_MUSIC_ON_MESSAGE = false;
+// const ENABLE_LX_MUSIC_ON_MESSAGE = true;
+const ENABLE_LX_MUSIC_ON_MESSAGE = false;
 
 // LX Music 桌面版路径（请确保路径存在）
 const LX_MUSIC_PATH = 'D:\\Music\\lx-music-desktop\\lx-music-desktop.exe';
@@ -67,6 +68,11 @@ const ENABLE_BUILD_ZIP_ANALYZE = parseEnvBool('ENABLE_BUILD_ZIP_ANALYZE', false)
 const ENABLE_AUTO_BRANCHLIST_FROM_GROUP = parseEnvBool('ENABLE_AUTO_BRANCHLIST_FROM_GROUP', true);
 const ENABLE_LOG_ALL_MESSAGES = parseEnvBool('ENABLE_LOG_ALL_MESSAGES', false);
 const ENABLE_APK_CRON = parseEnvBool('ENABLE_APK_CRON', true);
+const DEV_TUNNEL_PORT = parseInt(process.env.DEV_TUNNEL_PORT || '8088', 10);
+const DEV_TUNNEL_DURATION_MS = parseInt(
+    process.env.DEV_TUNNEL_DURATION_MS || String(10 * 60 * 1000),
+    10,
+);
 
 // 简单防抖：避免短时间内反复打开
 let lastLaunchTime = 0;
@@ -85,6 +91,8 @@ const phoneNumber = process.env.PHONE_NUMBER;
 const chatId = process.env.CHAT_ID ? BigInt(process.env.CHAT_ID) : null;
 const allowedChatIds = parseAllowedChatIds();
 let selfUserId = null;
+/** @type {import('./lib/dev/branch-tunnel').BranchTunnelManager | null} */
+let branchTunnelManager = null;
 
 // Session 文件（data/session.txt）
 const sessionFile = paths.sessionFile;
@@ -282,6 +290,13 @@ function isBranchAllowed(branchName) {
     console.log(chalk.gray('\n等待命令...\n'));
     console.log(chalk.gray(`详细运行日志目录: ${userBotLog.LOGS_DIR}（user-bot.log 等）\n`));
     userBotLog.initOnStartup();
+
+    branchTunnelManager = new BranchTunnelManager({
+        cloudflaredPath: (process.env.CLOUDFLARED_PATH || '').trim(),
+        devPort: DEV_TUNNEL_PORT,
+        durationMs: DEV_TUNNEL_DURATION_MS,
+    });
+    const branchTunnel = branchTunnelManager;
 
     function getPrimaryChatId() {
         if (chatId) return chatId;
@@ -518,6 +533,17 @@ function isBranchAllowed(branchName) {
                     `❌ 压缩包配置检测：分支在 WG-WEB / WGAME-WEB 中均未找到: ${branchFromFile}`,
                 ),
             );
+            if (taskChatId != null) {
+                try {
+                    await client.sendMessage(taskChatId, {
+                        message:
+                            `❌ 压缩包配置检测失败\n🌿 分支：${branchFromFile}\n未在 WG-WEB / WGAME-WEB 中找到该分支`,
+                        linkPreview: false,
+                    });
+                } catch (sendErr) {
+                    console.log(chalk.yellow('发送压缩包检测失败提示失败:', sendErr.message));
+                }
+            }
             return;
         }
 
@@ -947,6 +973,7 @@ function isBranchAllowed(branchName) {
                     `2️⃣ 打包多个分支（空格隔开）:\n` +
                     `   打包 V5futebol x-12 main\n\n` +
                     `3️⃣ 上传压缩包 → 自动配置检测 + 加入 APK 等待队列\n\n` +
+                    `4️⃣ 穿透 分支名 → 启动 dev 并分享临时公网链接（约 10 分钟）\n\n` +
                     `终止打包 - 中断当前 zip 构建并清空排队\n\n` +
                     `取消打包:\n` +
                     `取消 V5futebol\n\n` +
@@ -1184,6 +1211,124 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
+            // 穿透：启动分支 dev 服务并通过 cloudflared 分享临时公网链接（默认 10 分钟）
+            if (trimmedText.startsWith('穿透')) {
+                const branchTextForTunnel = trimmedText.substring(2).trim();
+
+                if (!isUserAllowed(senderId)) {
+                    console.log(chalk.red(`拒绝穿透: 用户 ${senderId} 无权限`));
+                    return;
+                }
+
+                if (!branchTextForTunnel) {
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message:
+                                '❌ 穿透命令缺少分支名\n\n用法: 穿透 分支名\n示例: 穿透 7k-porco',
+                            linkPreview: false,
+                        });
+                    } catch (error) {
+                        console.log(chalk.yellow('发送消息失败:', error.message));
+                    }
+                    return;
+                }
+
+                const tunnelBranches = branchTextForTunnel
+                    .split(/[\s\n\r]+/)
+                    .map((b) => b.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim())
+                    .filter((b) => b.length > 0);
+
+                if (tunnelBranches.length !== 1) {
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: '❌ 穿透一次仅支持一个分支名',
+                            linkPreview: false,
+                        });
+                    } catch (error) {
+                        console.log(chalk.yellow('发送消息失败:', error.message));
+                    }
+                    return;
+                }
+
+                const tunnelBranchInput = tunnelBranches[0];
+                console.log(chalk.cyan(`收到穿透命令，分支: ${tunnelBranchInput}`));
+
+                (async () => {
+                    try {
+                        const resolvedTunnel = await resolveProjectAndBranch(tunnelBranchInput);
+                        if (!resolvedTunnel) {
+                            await client.sendMessage(message.chatId, {
+                                message: `❌ 穿透失败：分支 ${tunnelBranchInput} 在 WG-WEB / WGAME-WEB 中均未找到`,
+                                linkPreview: false,
+                            });
+                            return;
+                        }
+
+                        const tunProject = resolvedTunnel.project;
+                        const tunBranch = resolvedTunnel.actualBranchName;
+
+                        if (
+                            isBuilding &&
+                            currentBuildProjectName === tunProject.name
+                        ) {
+                            await client.sendMessage(message.chatId, {
+                                message:
+                                    `⚠️ ${tunProject.name} 正在打包，请稍后再试穿透 ${tunBranch}`,
+                                linkPreview: false,
+                            });
+                            return;
+                        }
+
+                        const tunnelResult = await branchTunnel.start({
+                            project: tunProject,
+                            branchName: tunBranch,
+                            chatId: message.chatId,
+                            client,
+                            enqueueProjectGitWork,
+                            ensureProjectOnBranchForAnalyze,
+                        });
+
+                        const remainMin = Math.max(
+                            1,
+                            Math.round((tunnelResult.expiresAt - Date.now()) / 60000),
+                        );
+                        let tunnelMsg =
+                            `🔌 穿透 ${tunnelResult.branchName}\n` +
+                            `📁 项目：${tunnelResult.projectName}\n` +
+                            `🔗 ${tunnelResult.publicUrl}\n` +
+                            `⏱️ 约 ${remainMin} 分钟有效`;
+                        if (tunnelResult.tunnelMode === 'localtunnel') {
+                            if (tunnelResult.accessIp) {
+                                tunnelMsg +=
+                                    `\n\n⚠️ localtunnel 首次打开需在页面填写公网 IP：\n` +
+                                    `${tunnelResult.accessIp}\n` +
+                                    `（须与运行 bot 的本机出口 IP 一致；更推荐开 Clash TUN 后用 cloudflared）`;
+                            } else {
+                                tunnelMsg +=
+                                    `\n\n⚠️ localtunnel 需在页面填写公网 IP，请在 bot 所在电脑执行：\n` +
+                                    `curl https://loca.lt/mytunnelpassword`;
+                            }
+                        }
+                        await client.sendMessage(message.chatId, {
+                            message: tunnelMsg,
+                            linkPreview: false,
+                        });
+                    } catch (tunnelErr) {
+                        const tunnelMsg = (tunnelErr && tunnelErr.message) || String(tunnelErr);
+                        console.log(chalk.yellow(`穿透失败: ${tunnelMsg}`));
+                        try {
+                            await client.sendMessage(message.chatId, {
+                                message: `❌ 穿透失败:\n${tunnelMsg}`,
+                                linkPreview: false,
+                            });
+                        } catch (sendErr) {
+                            console.log(chalk.yellow('发送穿透失败提示失败:', sendErr.message));
+                        }
+                    }
+                })();
+                return;
+            }
+
             // 检查是否是"检测"命令（默认关闭，仅上传压缩包时自动检测）
             if (trimmedText.startsWith('检测')) {
                 if (!ENABLE_MANUAL_DETECT) {
@@ -1328,160 +1473,160 @@ function isBranchAllowed(branchName) {
             const invalidBuildBranches = [];
 
             try {
-            for (const item of packItems) {
-                if (isBuildAborted(packToken)) {
-                    console.log(chalk.yellow('打包已终止（验证分支期间）'));
-                    return;
-                }
-                const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-                try {
-                    const resolved = await resolveProjectAndBranch(name);
-                    if (resolved) {
-                        resolvedBuildTargets.push({
-                            inputName: name,
-                            project: resolved.project,
-                            actualBranchName: resolved.actualBranchName,
-                            packageId:
-                                item.packageId != null && Number.isFinite(item.packageId)
-                                    ? item.packageId
-                                    : null,
-                        });
-                    } else {
+                for (const item of packItems) {
+                    if (isBuildAborted(packToken)) {
+                        console.log(chalk.yellow('打包已终止（验证分支期间）'));
+                        return;
+                    }
+                    const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+                    try {
+                        const resolved = await resolveProjectAndBranch(name);
+                        if (resolved) {
+                            resolvedBuildTargets.push({
+                                inputName: name,
+                                project: resolved.project,
+                                actualBranchName: resolved.actualBranchName,
+                                packageId:
+                                    item.packageId != null && Number.isFinite(item.packageId)
+                                        ? item.packageId
+                                        : null,
+                            });
+                        } else {
+                            invalidBuildBranches.push(name);
+                        }
+                    } catch (e) {
+                        console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
                         invalidBuildBranches.push(name);
                     }
-                } catch (e) {
-                    console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
-                    invalidBuildBranches.push(name);
-                }
-            }
-
-            if (isBuildAborted(packToken)) {
-                console.log(chalk.yellow('打包已终止（验证分支完成后）'));
-                return;
-            }
-
-            if (invalidBuildBranches.length > 0) {
-                console.log(
-                    chalk.yellow(
-                        `⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`,
-                    ),
-                );
-            }
-
-            if (resolvedBuildTargets.length === 0) {
-                console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
-                return;
-            }
-
-            const validBranches = resolvedBuildTargets.map(t => t.actualBranchName);
-            console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
-            console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
-
-            // 过滤掉已在队列中或正在打包的分支
-            const newTargets = [];
-            const duplicateBranches = [];
-
-            for (const target of resolvedBuildTargets) {
-                const branchName = target.actualBranchName;
-                // 检查是否正在打包
-                if (isBuilding && currentBuildBranch === branchName) {
-                    duplicateBranches.push(`${branchName} (正在打包)`);
-                    continue;
                 }
 
-                // 检查是否已在队列中
-                const inQueue = buildQueue.some(item => item.branchName === branchName);
-                if (inQueue) {
-                    duplicateBranches.push(`${branchName} (已在队列)`);
-                    continue;
+                if (isBuildAborted(packToken)) {
+                    console.log(chalk.yellow('打包已终止（验证分支完成后）'));
+                    return;
                 }
 
-                newTargets.push(target);
-            }
-
-            // 如果有重复的分支，发送提示
-            if (duplicateBranches.length > 0) {
-                try {
-                    await client.sendMessage(message.chatId, {
-                        message: `⚠️ 以下分支已存在，已跳过:\n${duplicateBranches.join('\n')}`
-                    });
-                } catch (error) {
-                    console.log(chalk.yellow('发送消息失败:', error.message));
+                if (invalidBuildBranches.length > 0) {
+                    console.log(
+                        chalk.yellow(
+                            `⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`,
+                        ),
+                    );
                 }
-            }
 
-            // 如果没有新分支需要处理，直接返回
-            if (newTargets.length === 0) {
-                console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
-                return;
-            }
+                if (resolvedBuildTargets.length === 0) {
+                    console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
+                    return;
+                }
 
-            if (isBuildAborted(packToken)) {
-                console.log(chalk.yellow('打包已终止（启动构建前）'));
-                return;
-            }
+                const validBranches = resolvedBuildTargets.map(t => t.actualBranchName);
+                console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
+                console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
 
-            // 处理多个分支（只处理新的有效分支）
-            for (let i = 0; i < newTargets.length; i++) {
+                // 过滤掉已在队列中或正在打包的分支
+                const newTargets = [];
+                const duplicateBranches = [];
+
+                for (const target of resolvedBuildTargets) {
+                    const branchName = target.actualBranchName;
+                    // 检查是否正在打包
+                    if (isBuilding && currentBuildBranch === branchName) {
+                        duplicateBranches.push(`${branchName} (正在打包)`);
+                        continue;
+                    }
+
+                    // 检查是否已在队列中
+                    const inQueue = buildQueue.some(item => item.branchName === branchName);
+                    if (inQueue) {
+                        duplicateBranches.push(`${branchName} (已在队列)`);
+                        continue;
+                    }
+
+                    newTargets.push(target);
+                }
+
+                // 如果有重复的分支，发送提示
+                if (duplicateBranches.length > 0) {
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: `⚠️ 以下分支已存在，已跳过:\n${duplicateBranches.join('\n')}`
+                        });
+                    } catch (error) {
+                        console.log(chalk.yellow('发送消息失败:', error.message));
+                    }
+                }
+
+                // 如果没有新分支需要处理，直接返回
+                if (newTargets.length === 0) {
+                    console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
+                    return;
+                }
+
                 if (isBuildAborted(packToken)) {
                     console.log(chalk.yellow('打包已终止（启动构建前）'));
                     return;
                 }
 
-                const { project, actualBranchName, packageId } = newTargets[i];
-                const branchName = actualBranchName;
-                const buildId = Date.now().toString() + '_' + i;
-
-                if (isBuilding || (i > 0)) {
-                    buildQueue.push({
-                        buildId,
-                        branchName,
-                        project,
-                        packageId,
-                        userId: senderId,
-                        chatId: message.chatId,
-                        timestamp: new Date(),
-                        abortToken: packToken,
-                    });
-                    console.log(chalk.gray(`加入队列: ${branchName} (位置 ${buildQueue.length})`));
-                    continue;
-                }
-
-                // 设置打包状态
-                isBuilding = true;
-                currentBuildBranch = branchName;
-                currentBuildProjectName = project.name;
-                currentBuildId = buildId;
-
-                console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
-                console.log(chalk.gray(`触发用户: ${senderId}\n`));
-
-                // 执行构建流程（异步，不等待）
-                (async () => {
-                    try {
-                        await executeBuild(project, branchName, senderId, message.chatId, {
-                            packageId,
-                            abortToken: packToken,
-                        });
-                    } catch (error) {
-                        console.error(chalk.red('打包失败:'), error);
+                // 处理多个分支（只处理新的有效分支）
+                for (let i = 0; i < newTargets.length; i++) {
+                    if (isBuildAborted(packToken)) {
+                        console.log(chalk.yellow('打包已终止（启动构建前）'));
+                        return;
                     }
 
-                    // 释放打包状态并处理下一个
-                    isBuilding = false;
-                    currentBuildBranch = '';
-                    currentBuildProjectName = '';
-                    currentBuildId = null;
-                    shouldCancelBuild = false;
+                    const { project, actualBranchName, packageId } = newTargets[i];
+                    const branchName = actualBranchName;
+                    const buildId = Date.now().toString() + '_' + i;
 
-                    setTimeout(() => {
-                        processNextInQueue();
-                        scheduleNextQueuedFileAnalyze(1000);
-                    }, 2000);
-                })();
-            }
+                    if (isBuilding || (i > 0)) {
+                        buildQueue.push({
+                            buildId,
+                            branchName,
+                            project,
+                            packageId,
+                            userId: senderId,
+                            chatId: message.chatId,
+                            timestamp: new Date(),
+                            abortToken: packToken,
+                        });
+                        console.log(chalk.gray(`加入队列: ${branchName} (位置 ${buildQueue.length})`));
+                        continue;
+                    }
 
-            return;
+                    // 设置打包状态
+                    isBuilding = true;
+                    currentBuildBranch = branchName;
+                    currentBuildProjectName = project.name;
+                    currentBuildId = buildId;
+
+                    console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
+                    console.log(chalk.gray(`触发用户: ${senderId}\n`));
+
+                    // 执行构建流程（异步，不等待）
+                    (async () => {
+                        try {
+                            await executeBuild(project, branchName, senderId, message.chatId, {
+                                packageId,
+                                abortToken: packToken,
+                            });
+                        } catch (error) {
+                            console.error(chalk.red('打包失败:'), error);
+                        }
+
+                        // 释放打包状态并处理下一个
+                        isBuilding = false;
+                        currentBuildBranch = '';
+                        currentBuildProjectName = '';
+                        currentBuildId = null;
+                        shouldCancelBuild = false;
+
+                        setTimeout(() => {
+                            processNextInQueue();
+                            scheduleNextQueuedFileAnalyze(1000);
+                        }, 2000);
+                    })();
+                }
+
+                return;
             } finally {
                 isPackPreparing = false;
             }
@@ -1524,6 +1669,8 @@ function isBranchAllowed(branchName) {
                 return;
             }
 
+            sweepExpiredZipBuildBundles();
+
             // 压缩包：入队（ZIP_PENDING）与配置检测（ZIP_ANALYZE）可独立开关
             if (!ENABLE_ZIP_PENDING && !ENABLE_ZIP_ANALYZE) {
                 console.log(
@@ -1537,6 +1684,15 @@ function isBranchAllowed(branchName) {
             const branchFromFile = extractBranchNameFromFileName(fileName);
             if (!branchFromFile) {
                 console.log(chalk.gray(`手动上传压缩包但未能从文件名解析分支，已跳过: ${fileName}`));
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message:
+                            `❌ 无法从压缩包文件名解析分支\n📄 文件：${fileName}\n💡 请使用形如「分支名.zip」的文件名（如 7k-porco.zip）`,
+                        linkPreview: false,
+                    });
+                } catch (sendErr) {
+                    console.log(chalk.yellow('发送压缩包解析失败提示失败:', sendErr.message));
+                }
                 return;
             }
 
@@ -1582,12 +1738,25 @@ function isBranchAllowed(branchName) {
 
             const bundleKey = makeZipBuildBundleKey(message.chatId, branchFromFile);
             const pendingBundle = pendingZipBuildBundles.get(bundleKey);
+            let zipBundleDelivered = false;
             if (pendingBundle && !pendingBundle.delivered) {
                 try {
-                    await deliverZipBuildBundle(message.chatId, branchFromFile, fileName);
+                    zipBundleDelivered = await deliverZipBuildBundle(
+                        message.chatId,
+                        branchFromFile,
+                        fileName,
+                    );
+                    if (zipBundleDelivered) {
+                        console.log(
+                            chalk.green(
+                                `✓ 压缩包已上传，已合并发送检测信息与配置截图: ${branchFromFile}`,
+                            ),
+                        );
+                        return;
+                    }
                     console.log(
-                        chalk.green(
-                            `✓ 压缩包已上传，已合并发送检测信息与配置截图: ${branchFromFile}`,
+                        chalk.yellow(
+                            `打包待发缓存未成功合并发送，改走独立配置检测: ${branchFromFile}`,
                         ),
                     );
                 } catch (e) {
@@ -1597,14 +1766,13 @@ function isBranchAllowed(branchName) {
                         ),
                     );
                 }
-                return;
             }
 
-            // 本号刚发出的构建 zip：合并发送已在 upload 队列完成，避免再次拉代码做独立检测
-            if (message.out) {
+            // 本号发出的构建 zip 若已合并发送则跳过；否则（如手动用本号上传）仍做独立检测
+            if (message.out && zipBundleDelivered) {
                 console.log(
                     chalk.gray(
-                        `跳过本号发出的压缩包独立检测（打包流程已合并输出）: ${fileName}`,
+                        `跳过本号发出的压缩包独立检测（已与打包结果合并发送）: ${fileName}`,
                     ),
                 );
                 return;
@@ -1618,6 +1786,12 @@ function isBranchAllowed(branchName) {
                 }).catch((e) => {
                     console.log(chalk.yellow(`群压缩包配置检测失败: ${(e && e.message) || e}`));
                 });
+            } else if (message.out) {
+                console.log(
+                    chalk.gray(
+                        `跳过本号发出的压缩包独立检测（ENABLE_ZIP_ANALYZE=false）: ${fileName}`,
+                    ),
+                );
             } else {
                 console.log(
                     chalk.gray(
@@ -4267,6 +4441,15 @@ function isBranchAllowed(branchName) {
 // 优雅退出
 process.on('SIGINT', async () => {
     console.log(chalk.yellow('\n正在断开连接...'));
+    if (branchTunnelManager) {
+        try {
+            for (const proj of ['WGAME-WEB', 'WG-WEB']) {
+                await branchTunnelManager.stop(proj, '进程退出');
+            }
+        } catch (_) {
+            // ignore
+        }
+    }
     await client.disconnect();
     process.exit(0);
 });
