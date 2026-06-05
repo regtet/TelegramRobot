@@ -1295,7 +1295,11 @@ function isBranchAllowed(branchName) {
 
                 (async () => {
                     try {
-                        const resolvedTunnel = await resolveProjectAndBranch(tunnelBranchInput);
+                        await warmProjectBranchesCache();
+                        const resolvedTunnel = await resolveProjectAndBranch(
+                            tunnelBranchInput,
+                            { reuseBranchCache: true },
+                        );
                         if (!resolvedTunnel) {
                             await client.sendMessage(message.chatId, {
                                 message: `❌ 穿透失败：分支 ${tunnelBranchInput} 在 WG-WEB / WGAME-WEB 中均未找到`,
@@ -1521,6 +1525,7 @@ function isBranchAllowed(branchName) {
             const invalidBuildBranches = [];
 
             try {
+                await warmProjectBranchesCache();
                 for (const item of packItems) {
                     if (isBuildAborted(packToken)) {
                         console.log(chalk.yellow('打包已终止（验证分支期间）'));
@@ -1528,7 +1533,9 @@ function isBranchAllowed(branchName) {
                     }
                     const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
                     try {
-                        const resolved = await resolveProjectAndBranch(name);
+                        const resolved = await resolveProjectAndBranch(name, {
+                            reuseBranchCache: true,
+                        });
                         if (resolved) {
                             resolvedBuildTargets.push({
                                 inputName: name,
