@@ -5,23 +5,97 @@ const os = require('os');
 const path = require('path');
 const chalk = require('chalk');
 const paths = require('../paths');
+const { parseEnvBool } = require('../core/env-bool');
 
 const CLOUDFLARED_CACHE_EXE = path.join(paths.VAR_DIR, 'cloudflared.exe');
 let ensureCloudflaredInflight = null;
 
-/** 仅当显式配置 CLOUDFLARED_PROXY 时才给 cloudflared 设代理（勿复用 Telegram 的 PROXY_HOST，易导致 1033） */
+function resolveCloudflaredProxyUrl() {
+    const explicit = (process.env.CLOUDFLARED_PROXY || '').trim();
+    if (explicit) {
+        return explicit;
+    }
+    if (!parseEnvBool('CLOUDFLARED_AUTO_PROXY', true)) {
+        return '';
+    }
+    const host = (process.env.PROXY_HOST || '').trim();
+    const port = (process.env.PROXY_PORT || '').trim();
+    if (!host || !port) {
+        return '';
+    }
+    return `http://${host}:${port}`;
+}
+
+/** cloudflared 出站代理：优先 CLOUDFLARED_PROXY，否则可按 CLOUDFLARED_AUTO_PROXY 使用 Clash 混合端口 */
 function buildCloudflaredEnv() {
     const env = { ...process.env };
-    const explicit = (process.env.CLOUDFLARED_PROXY || '').trim();
-    if (!explicit) {
+    const proxy = resolveCloudflaredProxyUrl();
+    if (!proxy) {
         return env;
     }
-    env.HTTP_PROXY = explicit;
-    env.HTTPS_PROXY = explicit;
-    env.http_proxy = explicit;
-    env.https_proxy = explicit;
-    env.ALL_PROXY = explicit;
+    env.HTTP_PROXY = proxy;
+    env.HTTPS_PROXY = proxy;
+    env.http_proxy = proxy;
+    env.https_proxy = proxy;
+    env.ALL_PROXY = proxy;
     return env;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 启动 dev 前先测能否访问 Cloudflare（避免切分支、起 dev 后才失败） */
+async function preflightCloudflareApi() {
+    const proxy = resolveCloudflaredProxyUrl();
+    const curlBin = process.platform === 'win32' ? 'curl.exe' : 'curl';
+    const nullOut = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    const args = [
+        '-sS',
+        '--max-time',
+        '15',
+        '-o',
+        nullOut,
+        '-w',
+        '%{http_code}',
+        'https://api.trycloudflare.com/',
+    ];
+    if (proxy) {
+        args.unshift('-x', proxy);
+    }
+
+    const httpCode = await new Promise((resolve, reject) => {
+        const proc = spawn(curlBin, args, {
+            shell: false,
+            env: buildCloudflaredEnv(),
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let out = '';
+        proc.stdout.on('data', (d) => {
+            out += d;
+        });
+        proc.on('error', reject);
+        proc.on('close', (code) => {
+            const status = out.trim();
+            if (code === 0 && status && status !== '000') {
+                resolve(status);
+                return;
+            }
+            reject(
+                new Error(
+                    proxy
+                        ? `无法经代理 ${proxy} 访问 api.trycloudflare.com`
+                        : '无法访问 api.trycloudflare.com（请开 Clash TUN 或配置 CLOUDFLARED_PROXY）',
+                ),
+            );
+        });
+    });
+
+    console.log(
+        chalk.gray(
+            `[穿透] Cloudflare API 预检通过 HTTP ${httpCode}${proxy ? `（代理 ${proxy}）` : '（直连）'}`,
+        ),
+    );
 }
 
 function isCloudflaredNetworkError(err) {
@@ -36,11 +110,14 @@ function wrapCloudflaredError(err) {
     if (!isCloudflaredNetworkError(err)) {
         return err instanceof Error ? err : new Error(msg);
     }
+    const proxyHint = resolveCloudflaredProxyUrl()
+        ? `当前代理：${resolveCloudflaredProxyUrl()}`
+        : '可在 .env 设置 CLOUDFLARED_AUTO_PROXY=true 并确保 Clash 混合端口可用，或开启 TUN 模式';
     return new Error(
         `${msg}\n\n` +
-            'cloudflared 无法连接 Cloudflare（api.trycloudflare.com）。\n' +
-            '请开启 Clash「TUN 模式」或「系统代理」后重试；仅给 Telegram 配 SOCKS 代理通常不够。\n' +
-            '请开启 Clash TUN 后重试 cloudflared（不要用 localtunnel，需填公网 IP 才能打开页面）。',
+            'cloudflared 无法连接 api.trycloudflare.com。\n' +
+            `${proxyHint}\n` +
+            '建议：Clash 开 TUN / 系统代理，或设置 CLOUDFLARED_PROXY=http://127.0.0.1:7890',
     );
 }
 
@@ -457,6 +534,11 @@ class BranchTunnelManager {
         return this.byProject.has(projectName);
     }
 
+    getActiveBranch(projectName) {
+        const active = this.byProject.get(projectName);
+        return active && active.branchName ? active.branchName : null;
+    }
+
     async stop(projectName, reason) {
         const active = this.byProject.get(projectName);
         if (!active) return;
@@ -488,10 +570,11 @@ class BranchTunnelManager {
             args.splice(1, 0, '--protocol', 'http2');
         }
         const cfEnv = buildCloudflaredEnv();
-        if (cfEnv.HTTP_PROXY) {
-            console.log(chalk.gray(`[穿透] cloudflared 代理: ${cfEnv.HTTP_PROXY}`));
+        const proxyUrl = resolveCloudflaredProxyUrl();
+        if (proxyUrl) {
+            console.log(chalk.gray(`[穿透] cloudflared 代理: ${proxyUrl}`));
         } else {
-            console.log(chalk.gray('[穿透] cloudflared 直连（方案 A：依赖 Clash TUN/系统代理）'));
+            console.log(chalk.gray('[穿透] cloudflared 直连（需 Clash TUN 或配置 CLOUDFLARED_PROXY）'));
         }
         console.log(chalk.gray(`[穿透] 启动隧道(${mode}): ${cmd} ${args.join(' ')}`));
         return spawn(cmd, args, {
@@ -514,6 +597,8 @@ class BranchTunnelManager {
     }) {
         const projectName = project.name;
         await this.stop(projectName, '被新穿透请求替换');
+
+        await preflightCloudflareApi();
 
         await enqueueProjectGitWork(projectName, async () => {
             await ensureProjectOnBranchForAnalyze(project, branchName);
@@ -549,10 +634,47 @@ class BranchTunnelManager {
         let tunnelMode = 'cloudflared';
         let accessIp = null;
 
+        const maxCfAttempts = Math.max(
+            1,
+            parseInt(process.env.CLOUDFLARED_RETRY_COUNT || '3', 10),
+        );
+        const retryDelayMs = Math.max(
+            1000,
+            parseInt(process.env.CLOUDFLARED_RETRY_DELAY_MS || '4000', 10),
+        );
+        let lastCfErr = null;
+
         try {
-            cfProc = await this.spawnCloudflared(localUrl);
-            publicUrl = await waitForCloudflaredTunnelUrl(cfProc, 180000);
-            console.log(chalk.green(`[穿透] 公网链接(cloudflared): ${publicUrl}`));
+            for (let attempt = 1; attempt <= maxCfAttempts; attempt++) {
+                try {
+                    if (attempt > 1) {
+                        console.log(
+                            chalk.yellow(
+                                `[穿透] cloudflared 第 ${attempt}/${maxCfAttempts} 次重试…`,
+                            ),
+                        );
+                    }
+                    cfProc = await this.spawnCloudflared(localUrl);
+                    publicUrl = await waitForCloudflaredTunnelUrl(cfProc, 180000);
+                    console.log(chalk.green(`[穿透] 公网链接(cloudflared): ${publicUrl}`));
+                    lastCfErr = null;
+                    break;
+                } catch (attemptErr) {
+                    killProcessTree(cfProc);
+                    cfProc = null;
+                    lastCfErr = attemptErr;
+                    if (
+                        attempt >= maxCfAttempts ||
+                        !isCloudflaredNetworkError(attemptErr)
+                    ) {
+                        throw attemptErr;
+                    }
+                    await sleep(retryDelayMs);
+                }
+            }
+            if (lastCfErr) {
+                throw lastCfErr;
+            }
         } catch (err) {
             killProcessTree(cfProc);
             cfProc = null;

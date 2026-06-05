@@ -68,6 +68,7 @@ const ENABLE_BUILD_ZIP_ANALYZE = parseEnvBool('ENABLE_BUILD_ZIP_ANALYZE', false)
 const ENABLE_AUTO_BRANCHLIST_FROM_GROUP = parseEnvBool('ENABLE_AUTO_BRANCHLIST_FROM_GROUP', true);
 const ENABLE_LOG_ALL_MESSAGES = parseEnvBool('ENABLE_LOG_ALL_MESSAGES', false);
 const ENABLE_APK_CRON = parseEnvBool('ENABLE_APK_CRON', true);
+const ENABLE_TUNNEL_ALL_USERS = parseEnvBool('ENABLE_TUNNEL_ALL_USERS', false);
 const DEV_TUNNEL_PORT = parseInt(process.env.DEV_TUNNEL_PORT || '8088', 10);
 const DEV_TUNNEL_DURATION_MS = parseInt(
     process.env.DEV_TUNNEL_DURATION_MS || String(10 * 60 * 1000),
@@ -485,6 +486,45 @@ function isBranchAllowed(branchName) {
             }),
         );
         return run;
+    }
+
+    /** 该项目仓库是否正被 zip 打包 / 排队占用（与穿透互斥） */
+    function isProjectZipPackBusy(projectName) {
+        if (!projectName) return false;
+        if (isBuilding && currentBuildProjectName === projectName) return true;
+        return buildQueue.some((t) => t.project && t.project.name === projectName);
+    }
+
+    /** 穿透与打包/APK/压缩包检测共用同一 Git 工作区，同项目需互斥 */
+    function isProjectGitWorkspaceBusy(projectName) {
+        if (!projectName) return false;
+        if (isProjectZipPackBusy(projectName)) return true;
+        if (isApkBuilding && currentApkBuildProjectName === projectName) return true;
+        if (apkBuildQueue.some((t) => t.projectName === projectName)) return true;
+        if (
+            isProcessingFile &&
+            currentFileProcessTask &&
+            currentFileProcessTask.project &&
+            currentFileProcessTask.project.name === projectName
+        ) {
+            return true;
+        }
+        if (fileProcessQueue.some((t) => t.project && t.project.name === projectName)) {
+            return true;
+        }
+        return false;
+    }
+
+    function isProjectTunnelActive(projectName) {
+        return Boolean(
+            branchTunnelManager && branchTunnelManager.isProjectBusy(projectName),
+        );
+    }
+
+    function getProjectTunnelBranch(projectName) {
+        return branchTunnelManager
+            ? branchTunnelManager.getActiveBranch(projectName)
+            : null;
     }
 
     /** 构建结束后若还有待分析的压缩包任务，顺带启动队列（仅靠 processFileTask 自驱动时，
@@ -1215,7 +1255,7 @@ function isBranchAllowed(branchName) {
             if (trimmedText.startsWith('穿透')) {
                 const branchTextForTunnel = trimmedText.substring(2).trim();
 
-                if (!isUserAllowed(senderId)) {
+                if (!ENABLE_TUNNEL_ALL_USERS && !isUserAllowed(senderId)) {
                     console.log(chalk.red(`拒绝穿透: 用户 ${senderId} 无权限`));
                     return;
                 }
@@ -1267,13 +1307,21 @@ function isBranchAllowed(branchName) {
                         const tunProject = resolvedTunnel.project;
                         const tunBranch = resolvedTunnel.actualBranchName;
 
-                        if (
-                            isBuilding &&
-                            currentBuildProjectName === tunProject.name
-                        ) {
+                        if (isProjectGitWorkspaceBusy(tunProject.name)) {
+                            let busyHint = `${tunProject.name} 正在打包、APK 或配置检测`;
+                            if (isProjectZipPackBusy(tunProject.name)) {
+                                const who =
+                                    isBuilding && currentBuildProjectName === tunProject.name
+                                        ? currentBuildBranch
+                                        : null;
+                                busyHint = who
+                                    ? `${tunProject.name} 正在打包 ${who}`
+                                    : `${tunProject.name} 有分支在打包队列中`;
+                            }
                             await client.sendMessage(message.chatId, {
                                 message:
-                                    `⚠️ ${tunProject.name} 正在打包，请稍后再试穿透 ${tunBranch}`,
+                                    `⚠️ ${busyHint}，与穿透会争抢同一仓库工作区\n` +
+                                    `请等待完成后再穿透 ${tunBranch}`,
                                 linkPreview: false,
                             });
                             return;
@@ -1528,6 +1576,17 @@ function isBranchAllowed(branchName) {
 
                 for (const target of resolvedBuildTargets) {
                     const branchName = target.actualBranchName;
+                    const projectName =
+                        target.project && target.project.name ? target.project.name : '';
+
+                    if (isProjectTunnelActive(projectName)) {
+                        const tunBranch = getProjectTunnelBranch(projectName);
+                        duplicateBranches.push(
+                            `${branchName}（${projectName} 正在穿透 ${tunBranch || '?'}，请先等穿透结束）`,
+                        );
+                        continue;
+                    }
+
                     // 检查是否正在打包
                     if (isBuilding && currentBuildBranch === branchName) {
                         duplicateBranches.push(`${branchName} (正在打包)`);
@@ -2020,11 +2079,18 @@ function isBranchAllowed(branchName) {
         ) {
             return true;
         }
+        if (isProjectTunnelActive(projectName)) {
+            const tunBranch = getProjectTunnelBranch(projectName);
+            if (gitBranchMatches(tunBranch, branch)) {
+                return true;
+            }
+        }
         return false;
     }
 
     function hasPendingWorkForProject(projectName) {
         if (!projectName) return false;
+        if (isProjectTunnelActive(projectName)) return true;
         if (isBuilding && currentBuildProjectName === projectName) return true;
         if (isApkBuilding && currentApkBuildProjectName === projectName) return true;
         if (isProcessingFile) {
@@ -4288,6 +4354,17 @@ function isBranchAllowed(branchName) {
             log(chalk.yellow('任务已终止（构建开始前）'));
             clearZipBuildBundle(chatId, branchName, '构建已取消');
             return { cancelled: true };
+        }
+
+        if (isProjectTunnelActive(project.name)) {
+            const tunBranch = getProjectTunnelBranch(project.name);
+            log(
+                chalk.yellow(
+                    `跳过构建：${project.name} 正在穿透 ${tunBranch || '?'}，避免切换分支`,
+                ),
+            );
+            clearZipBuildBundle(chatId, branchName, '穿透占用工作区');
+            return { cancelled: false };
         }
 
         shouldCancelBuild = false;

@@ -1805,5 +1805,296 @@
     ],
     "updatedAt": "2026-06-03T09:49:37.086Z",
     "source": "group_announce"
+  },
+  "cargopg": {
+    "branch": "cargopg",
+    "packageId": "14",
+    "series": "DY",
+    "branchNameHint": "cargopg",
+    "matchTokens": [
+      "cargopg",
+      "dycargopg",
+      "cargopg.dy-grupo",
+      "cargopgdygrupo",
+      "dy-grupo"
+    ],
+    "domains": [
+      "dycargopg",
+      "cargopg",
+      "cargopg.dy-grupo"
+    ],
+    "updatedAt": "2026-06-03T13:18:53.911Z",
+    "source": "group_announce"
+  },
+  "jogosmk": {
+    "branch": "jogosmk",
+    "packageId": "11",
+    "series": "MK",
+    "branchNameHint": "jogosmk",
+    "matchTokens": [
+      "jogosmk",
+      "mk-jogos",
+      "mkjogos"
+    ],
+    "domains": [
+      "mk-jogos",
+      "jogosmk"
+    ],
+    "updatedAt": "2026-06-03T13:27:22.162Z",
+    "source": "group_announce"
+  },
+  "kid-fp": {
+    "branch": "kid-fp",
+    "packageId": "3",
+    "series": "FP",
+    "branchNameHint": "kid-fp",
+    "matchTokens": [
+      "kid-fp",
+      "fp-bicicletapg",
+      "fpbicicletapg",
+      "bicicleta-pg",
+      "bicicletapg",
+      "bicicletapg.fp-grupo",
+      "bicicletapgfpgrupo",
+      "fp-grupo",
+      "kidfp"
+    ],
+    "domains": [
+      "fp-bicicletapg",
+      "bicicleta-pg",
+      "bicicletapg.fp-grupo"
+    ],
+    "updatedAt": "2026-06-03T14:03:07.646Z",
+    "source": "group_announce"
+  },
+  "crackerpg": {
+    "branch": "crackerpg",
+    "packageId": "22",
+    "series": "91",
+    "branchNameHint": "crackerpg",
+    "matchTokens": [
+      "crackerpg",
+      "cracker-pg",
+      "91-cracker-pg",
+      "91crackerpg",
+      "91-crackerpg",
+      "crackerpg.91-grupo",
+      "crackerpg91grupo",
+      "91-grupo"
+    ],
+    "domains": [
+      "cracker-pg",
+      "91-cracker-pg",
+      "91-crackerpg",
+      "crackerpg.91-grupo"
+    ],
+    "updatedAt": "2026-06-03T17:51:40.272Z",
+    "source": "group_announce"
+  },
+  "tramwaypg": {
+    "branch": "tramwaypg",
+    "packageId": "17",
+    "series": "A8",
+    "branchNameHint": "tramwaypg",
+    "matchTokens": [
+      "tramwaypg",
+      "tramway-pg",
+      "a8-tramwaypg",
+      "a8tramwaypg"
+    ],
+    "domains": [
+      "tramway-pg",
+      "a8-tramwaypg",
+      "tramwaypg"
+    ],
+    "updatedAt": "2026-06-03T20:01:08.752Z",
+    "source": "group_announce"
+  },
+  "zg-t63": {
+    "branch": "zg-t63",
+    "packageId": "20",
+    "series": "ZG",
+    "branchNameHint": "zg-t63",
+    "matchTokens": [
+      "zg-t63",
+      "zgt63"
+    ],
+    "domains": [
+      "zg-t63",
+      "t63"
+    ],
+    "updatedAt": "2026-06-04T08:26:22.939Z",
+    "source": "group_announce"
+  },
+  "apotose777": {
+    "branch": "apotose777",
+    "packageId": "13",
+    "series": "ALFA",
+    "branchNameHint": "apotose777",
+    "matchTokens": [
+      "apotose777",
+      "alfa-98",
+      "alfa98"
+    ],
+    "domains": [
+      "alfa-98",
+      "alfa98",
+      "alfa98"
+    ],
+    "updatedAt": "2026-06-04T10:33:09.522Z",
+    "source": "group_announce"
+  },
+  "fa-apotose777": {
+    "branch": "fa-apotose777",
+    "packageId": "23",
+    "series": "FA",
+    "branchNameHint": "fa-apotose777",
+    "matchTokens": [
+      "fa-apotose777",
+      "faapotose777",
+      "apotose-777",
+      "apotose777",
+      "apoteose-777",
+      "apoteose777",
+      "fa-apoteose777",
+      "faapoteose777"
+    ],
+    "domains": [
+      "fa-apotose777",
+      "apotose-777",
+      "apoteose-777",
+      "fa-apoteose777"
+    ],
+    "updatedAt": "2026-06-04T10:36:29.998Z",
+    "source": "group_announce"
+  },
+  "527win": {
+    "branch": "527win",
+    "packageId": "24",
+    "series": "777CLUB",
+    "branchNameHint": "527win",
+    "matchTokens": [
+      "527win",
+      "527win1"
+    ],
+    "domains": [
+      "527win1",
+      "527win",
+      "527win"
+    ],
+    "updatedAt": "2026-06-04T10:53:10.005Z",
+    "source": "group_announce"
+  },
+  "pgpopeye": {
+    "branch": "pgpopeye",
+    "packageId": "34",
+    "series": "BOI",
+    "branchNameHint": "pgpopeye",
+    "matchTokens": [
+      "pgpopeye",
+      "pg-popeye"
+    ],
+    "domains": [
+      "pg-popeye",
+      "pgpopeye"
+    ],
+    "updatedAt": "2026-06-04T10:55:46.667Z",
+    "source": "group_announce"
+  },
+  "assar777": {
+    "branch": "assar777",
+    "packageId": "4",
+    "series": "777",
+    "branchNameHint": "assar777",
+    "matchTokens": [
+      "assar777",
+      "777assar-777",
+      "777assar777",
+      "assar.777-equipe",
+      "assar777equipe",
+      "assar",
+      "777-equipe"
+    ],
+    "domains": [
+      "777assar-777",
+      "assar777",
+      "assar.777-equipe"
+    ],
+    "updatedAt": "2026-06-04T12:43:50.635Z",
+    "source": "group_announce"
+  },
+  "hms-avocado": {
+    "branch": "hms-avocado",
+    "packageId": "28",
+    "series": "HMS",
+    "branchNameHint": "hms-avocado",
+    "matchTokens": [
+      "hms-avocado",
+      "hmsavocado"
+    ],
+    "domains": [
+      "hms-avocado",
+      "hms-avocado"
+    ],
+    "updatedAt": "2026-06-04T16:53:53.612Z",
+    "source": "group_announce"
+  },
+  "kf-6owin": {
+    "branch": "kf-6owin",
+    "packageId": "17",
+    "series": "KF",
+    "branchNameHint": "kf-6owin",
+    "matchTokens": [
+      "kf-6owin",
+      "kf6owin",
+      "6owin"
+    ],
+    "domains": [
+      "kf-6owin",
+      "6owin"
+    ],
+    "updatedAt": "2026-06-04T17:38:39.168Z",
+    "source": "group_announce"
+  },
+  "palettepg": {
+    "branch": "palettepg",
+    "packageId": "17",
+    "series": "DZ",
+    "branchNameHint": "palettepg",
+    "matchTokens": [
+      "palettepg",
+      "palette-pg",
+      "dzpalettepg"
+    ],
+    "domains": [
+      "palette-pg",
+      "dzpalettepg"
+    ],
+    "updatedAt": "2026-06-04T18:59:08.269Z",
+    "source": "group_announce"
+  },
+  "steamedpg": {
+    "branch": "steamedpg",
+    "packageId": "4",
+    "series": "W1",
+    "branchNameHint": "steamedpg",
+    "matchTokens": [
+      "steamedpg",
+      "steamed-pg",
+      "w1-steamed-pg",
+      "w1steamedpg",
+      "w1steamadpg",
+      "steamedpg.w1-grupo",
+      "steamedpgw1grupo",
+      "w1-grupo"
+    ],
+    "domains": [
+      "steamed-pg",
+      "w1-steamed-pg",
+      "w1steamadpg",
+      "steamedpg.w1-grupo"
+    ],
+    "updatedAt": "2026-06-04T19:54:21.483Z",
+    "source": "group_announce"
   }
 }
