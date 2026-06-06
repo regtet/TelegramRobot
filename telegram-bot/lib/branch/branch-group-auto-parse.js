@@ -65,8 +65,39 @@ function hostToMatchTokens(hostRoot) {
 
 const PKG_ID_FRAGMENT = '分包\\s*ID';
 
+function normalizeAnnounceLine(line) {
+    return String(line || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function inferBranchNameHintFromReplica(header, domains, pendingHint) {
+    if (pendingHint && pendingHint.branchNameHint) {
+        return String(pendingHint.branchNameHint).toLowerCase();
+    }
+    const primary =
+        domains.find((d) => String(d).includes('-')) ||
+        domains[0] ||
+        null;
+    if (!primary) return null;
+
+    const seriesRaw = (header.seriesRaw || '').trim();
+    const seriesNorm = normalizeForMatch(seriesRaw);
+    const hostNorm = normalizeForMatch(primary);
+
+    if (seriesNorm && hostNorm.startsWith(seriesNorm)) {
+        return String(primary).toLowerCase();
+    }
+    if (seriesRaw) {
+        return `${seriesRaw.toLowerCase()}-${String(primary).toLowerCase()}`;
+    }
+    return String(primary).toLowerCase();
+}
+
 function findReplicaHeaderLine(lines) {
-    for (const l of lines) {
+    for (const rawLine of lines) {
+        const l = normalizeAnnounceLine(rawLine);
         const hasPkgId = new RegExp(PKG_ID_FRAGMENT, 'i').test(l);
         if (!/复刻台/.test(l) || !hasPkgId) continue;
         const m = l.match(
@@ -152,8 +183,7 @@ function tryParseReplicaConfigMessage(trimmedText, pendingHint) {
         for (const t of hostToMatchTokens(firstHost)) matchTokens.add(t);
     }
 
-    const branchNameHint =
-        (pendingHint && pendingHint.branchNameHint) || firstHost || domains[0] || null;
+    const branchNameHint = inferBranchNameHintFromReplica(header, domains, pendingHint);
     if (!branchNameHint) return null;
 
     const recordKey = branchNameHint.toLowerCase();

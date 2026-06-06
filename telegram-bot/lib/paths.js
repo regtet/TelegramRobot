@@ -20,6 +20,7 @@ const paths = {
     apkPendingFile: path.join(DATA_DIR, 'apk-pending.json'),
     apkBuiltHistoryFile: path.join(DATA_DIR, 'apk-built-history.json'),
     branchPackageExpectFile: path.join(DATA_DIR, 'branch-package-expect.json'),
+    branchAnnouncePendingFile: path.join(DATA_DIR, 'branch-announce-pending.json'),
     branchListFile: path.join(DATA_DIR, 'branchList.json'),
     logsDir: path.join(VAR_DIR, 'logs'),
     tmpDir: path.join(VAR_DIR, 'tmp'),

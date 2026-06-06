@@ -688,7 +688,7 @@ function isBranchAllowed(branchName) {
     }
 
     /**
-     * 群内复刻台任务：第 1 条单行域名 → pending；第 2 条复刻台+分包ID → 写入期望分包（可穿插他人消息）
+     * 群内复刻台任务：第 1 条单行域名 → 群级 pending（持久化）；第 2 条复刻台+分包ID → 写入期望分包（可穿插他人消息，4h 内有效）
      */
     function handleGroupReplicaAnnounce(chatIdStr, trimmedText, senderId) {
         if (!ENABLE_AUTO_BRANCHLIST_FROM_GROUP || !trimmedText) return;
@@ -696,9 +696,10 @@ function isBranchAllowed(branchName) {
         const hint = branchGroupParse.tryParseBranchNameHintMessage(trimmedText);
         if (hint) {
             branchAnnounceState.setPendingBranchHint(chatIdStr, senderId, hint);
+            const ttlHours = Math.round(branchAnnounceState.PENDING_TTL_MS / 3600000);
             console.log(
                 chalk.cyan(
-                    `✅ [公告] 已记录命名参考: ${hint.branchNameHint}（发送者 ${senderId || '-'}，等待复刻台分包行）`,
+                    `✅ [公告] 已记录命名参考: ${hint.branchNameHint}（群 ${chatIdStr}，发送者 ${senderId || '-'}，${ttlHours}h 内等待复刻台分包行）`,
                 ),
             );
             return;
@@ -710,7 +711,7 @@ function isBranchAllowed(branchName) {
             if (branchGroupParse.isAnnounceRelatedText(trimmedText)) {
                 console.log(
                     chalk.yellow(
-                        `⚠ [公告] 识别到复刻台相关内容但解析失败（发送者 ${senderId || '-'}，会话 ${chatIdStr}）`,
+                        `⚠ [公告] 识别到复刻台相关内容但解析失败（发送者 ${senderId || '-'}，群 ${chatIdStr}${pending ? `，pending=${pending.branchNameHint}` : '，无 pending 命名参考'}）`,
                     ),
                 );
             }
@@ -720,9 +721,10 @@ function isBranchAllowed(branchName) {
         branchPackageExpect.setFromAnnounceTask(task);
         branchAnnounceState.clearPendingBranchHint(chatIdStr, senderId);
         const seriesPart = task.series ? `，系列 ${task.series}` : '';
+        const pendingNote = pending ? `，已配对 pending ${pending.branchNameHint}` : '，无 pending（由分包行域名推断 recordKey）';
         console.log(
             chalk.green(
-                `✅ [公告] 已记录 ${task.recordKey} → packageId ${task.packageId}${seriesPart}（发送者 ${senderId || '-'}，匹配 token ${task.matchTokens.length} 个）`,
+                `✅ [公告] 已记录 ${task.recordKey} → packageId ${task.packageId}${seriesPart}${pendingNote}（发送者 ${senderId || '-'}，匹配 token ${task.matchTokens.length} 个）`,
             ),
         );
     }

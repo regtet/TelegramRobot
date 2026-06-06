@@ -97,6 +97,34 @@ function getForBranch(branch) {
 }
 
 /**
+ * 判断公告 token 是否匹配 Git 分支名（避免 baralho777 误命中 alho777 等子串）
+ */
+function tokenMatchesBranch(normBranch, nt, entry) {
+    if (!normBranch || !nt || nt.length < MIN_TOKEN_LEN) return false;
+    if (normBranch === nt) return true;
+    if (nt.includes(normBranch)) return true;
+
+    if (!normBranch.includes(nt)) return false;
+    if (!normBranch.endsWith(nt)) return false;
+
+    const prefix = normBranch.slice(0, normBranch.length - nt.length);
+    if (!prefix) return true;
+
+    const entryBranchNorm = normalizeForMatch(entry.branch || entry.branchNameHint || '');
+    if (entryBranchNorm === normBranch) return true;
+
+    if (entryBranchNorm.endsWith(nt)) {
+        const expectedPrefix = entryBranchNorm.slice(0, entryBranchNorm.length - nt.length);
+        if (prefix === expectedPrefix) return true;
+    }
+
+    const seriesNorm = normalizeForMatch(entry.series || '');
+    if (seriesNorm && prefix === seriesNorm) return true;
+
+    return false;
+}
+
+/**
  * 按 Git 分支名模糊匹配公告记录（第 1 条 token + 第 2 条 packageId）
  */
 function resolveExpectationForBranch(branchName) {
@@ -125,12 +153,11 @@ function resolveExpectationForBranch(branchName) {
         for (const token of tokenSet) {
             const nt = normalizeForMatch(token);
             if (nt.length < MIN_TOKEN_LEN) continue;
-            if (normBranch.includes(nt) || nt.includes(normBranch)) {
-                const score = nt.length;
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = entry;
-                }
+            if (!tokenMatchesBranch(normBranch, nt, entry)) continue;
+            const score = nt.length;
+            if (score > bestScore) {
+                bestScore = score;
+                best = entry;
             }
         }
     }

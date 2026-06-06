@@ -2096,5 +2096,183 @@
     ],
     "updatedAt": "2026-06-04T19:54:21.483Z",
     "source": "group_announce"
+  },
+  "929bet00": {
+    "branch": "929bet00",
+    "packageId": "18",
+    "series": "BET经典版",
+    "branchNameHint": "929bet00",
+    "matchTokens": [
+      "929bet00",
+      "929bet"
+    ],
+    "domains": [
+      "929bet00",
+      "929bet",
+      "929bet"
+    ],
+    "updatedAt": "2026-06-05T09:18:46.709Z",
+    "source": "group_announce"
+  },
+  "mango-pessego": {
+    "branch": "mango-pessego",
+    "packageId": "23",
+    "series": "MANGA",
+    "branchNameHint": "mango-pessego",
+    "matchTokens": [
+      "mango-pessego",
+      "mangopessego",
+      "manga-pessego-pg",
+      "mangapessegopg",
+      "mango-pessego-pg",
+      "mangopessegopg"
+    ],
+    "domains": [
+      "mango-pessego",
+      "manga-pessego-pg",
+      "mango-pessego-pg"
+    ],
+    "updatedAt": "2026-06-05T09:19:30.772Z",
+    "source": "group_announce"
+  },
+  "slotbr1": {
+    "branch": "slotbr1",
+    "packageId": "3",
+    "series": "99K",
+    "branchNameHint": "slotbr1",
+    "matchTokens": [
+      "slotbr1",
+      "slotbr"
+    ],
+    "domains": [
+      "slotbr1",
+      "slotbr"
+    ],
+    "updatedAt": "2026-06-05T09:20:35.866Z",
+    "source": "group_announce"
+  },
+  "681win": {
+    "branch": "681win",
+    "packageId": "30",
+    "series": "888",
+    "branchNameHint": "681win",
+    "matchTokens": [
+      "681win",
+      "681-win"
+    ],
+    "domains": [
+      "681-win",
+      "681win",
+      "681win"
+    ],
+    "updatedAt": "2026-06-05T11:03:32.543Z",
+    "source": "group_announce"
+  },
+  "viupg": {
+    "branch": "viupg",
+    "packageId": "14",
+    "series": "AJ",
+    "branchNameHint": "viupg",
+    "matchTokens": [
+      "viupg",
+      "aj-viu-pg",
+      "ajviupg",
+      "aj-viupg",
+      "viupg.aj-grupo",
+      "viupgajgrupo",
+      "aj-grupo"
+    ],
+    "domains": [
+      "aj-viu-pg",
+      "aj-viupg",
+      "viupg",
+      "viupg.aj-grupo"
+    ],
+    "updatedAt": "2026-06-05T13:03:32.995Z",
+    "source": "group_announce"
+  },
+  "fa8-alho777": {
+    "branch": "fa8-alho777",
+    "packageId": "9",
+    "series": "FA8",
+    "branchNameHint": "fa8-alho777",
+    "matchTokens": [
+      "fa8-alho777",
+      "alho777",
+      "fa8alho777"
+    ],
+    "domains": [
+      "alho777",
+      "fa8-alho777"
+    ],
+    "updatedAt": "2026-06-05T15:24:48.484Z",
+    "source": "group_announce"
+  },
+  "x-mace1": {
+    "branch": "x-mace1",
+    "packageId": "23",
+    "series": "ZG",
+    "branchNameHint": "x-mace1",
+    "matchTokens": [
+      "x-mace1",
+      "xmace1",
+      "x-mace",
+      "xmace"
+    ],
+    "domains": [
+      "x-mace1",
+      "x-mace"
+    ],
+    "updatedAt": "2026-06-06T08:23:23.668Z",
+    "source": "group_announce"
+  },
+  "w8-w1": {
+    "branch": "w8-w1",
+    "packageId": "24",
+    "series": "ZG",
+    "branchNameHint": "w8-w1",
+    "matchTokens": [
+      "w8-w1",
+      "w8w1"
+    ],
+    "domains": [
+      "w8-w1",
+      "w8w1"
+    ],
+    "updatedAt": "2026-06-06T08:24:14.486Z",
+    "source": "group_announce"
+  },
+  "okokdance": {
+    "branch": "okokdance",
+    "packageId": "16",
+    "series": "OKOK",
+    "branchNameHint": "okokdance",
+    "matchTokens": [
+      "okokdance",
+      "okokdance11"
+    ],
+    "domains": [
+      "okokdance11",
+      "okokdance",
+      "okokdance"
+    ],
+    "updatedAt": "2026-06-06T09:46:56.484Z",
+    "source": "group_announce"
+  },
+  "rrxty1": {
+    "branch": "rrxty1",
+    "packageId": "12",
+    "series": "TY",
+    "branchNameHint": "rrxty1",
+    "matchTokens": [
+      "rrxty1",
+      "rrxty"
+    ],
+    "domains": [
+      "rrxty1",
+      "rrxty"
+    ],
+    "updatedAt": "2026-06-06T09:48:51.439Z",
+    "source": "group_announce"
   }
 }
