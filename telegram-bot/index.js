@@ -3812,6 +3812,9 @@ function isBranchAllowed(branchName) {
                 '\n' +
                 failureItems.map((item, i) => `${i + 1}. ${item.label}${item.suffix}`).join('\n');
         }
+        if (failureFromBuild.length >= 3) {
+            summaryMsg += '\n\n⚠️ 疑似打包服务异常，请检查服务器状态';
+        }
         return summaryMsg;
     }
 

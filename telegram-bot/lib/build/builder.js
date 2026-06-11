@@ -157,6 +157,43 @@ class Builder {
   }
 
   /**
+   * 中止进行中的 merge/rebase/cherry-pick（失败时忽略）
+   */
+  async abortInProgressGitOperations() {
+    await this.runCommand('git merge --abort');
+    await this.runCommand('git rebase --abort');
+    await this.runCommand('git cherry-pick --abort');
+  }
+
+  /**
+   * 打包机专用：丢弃本地改动与未完成的合并，恢复可切换分支的干净状态
+   */
+  async forceCleanWorkspace() {
+    await this.abortInProgressGitOperations();
+    const resetResult = await this.runCommand('git reset --hard HEAD');
+    const cleanResult = await this.runCommand('git clean -fd');
+    return resetResult.success || cleanResult.success;
+  }
+
+  /**
+   * 将当前分支硬同步到 origin（避免 git pull 产生合并冲突）
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  async hardResetBranchToOrigin(branchName) {
+    const remoteRef = `origin/${branchName}`;
+    const verify = await this.runCommand(`git rev-parse --verify ${remoteRef}`);
+    if (!verify.success) {
+      return { success: false, error: `远程不存在 ${remoteRef}` };
+    }
+    await this.forceCleanWorkspace();
+    const reset = await this.runCommand(`git reset --hard ${remoteRef}`);
+    if (!reset.success) {
+      return { success: false, error: reset.error || `reset --hard ${remoteRef} 失败` };
+    }
+    return { success: true };
+  }
+
+  /**
    * 切换分支并拉取最新代码
    */
   async checkoutAndPull(branchName) {
@@ -169,7 +206,7 @@ class Builder {
     if (this.config.autoFetchPull) {
       // 1. Fetch 所有分支（带重试）
       for (let i = 0; i < retries; i++) {
-        result = await this.runCommand('git fetch --all');
+        result = await this.runCommand('git fetch --all --prune');
         if (result.success) break;
 
         if (i < retries - 1) {
@@ -186,40 +223,16 @@ class Builder {
       console.log(chalk.yellow('⚠ 跳过 Fetch（autoFetchPull=false）'));
     }
 
-    // 1.5. 清理工作区，确保可以切换分支
+    // 1.5. 清理工作区（含未完成的 merge/rebase），确保可以切换分支
     console.log(chalk.cyan('🧹 清理工作区...'));
-
-    // 检查工作区状态
-    result = await this.runCommand('git status --porcelain');
-    const hasChanges = result.success && result.output.trim().length > 0;
-
-    if (hasChanges) {
-      console.log(chalk.yellow('⚠ 检测到工作区有未提交的更改，正在清理...'));
-
-      // 重置工作区和索引（丢弃所有本地更改）
-      result = await this.runCommand('git reset --hard HEAD');
-      if (!result.success) {
-        console.log(chalk.yellow('⚠ git reset --hard 失败，尝试其他方法...'));
-      }
-
-      // 清理未跟踪的文件和目录
-      const cleanResult = await this.runCommand('git clean -fd');
-      if (cleanResult.success) {
-        console.log(chalk.green('✓ 工作区已清理'));
-      } else if (result.success) {
-        console.log(chalk.green('✓ 工作区已清理（部分）'));
-      } else {
-        console.log(chalk.yellow('⚠ 工作区清理可能不完整，继续尝试切换分支...'));
-      }
-    } else {
-      console.log(chalk.green('✓ 工作区干净'));
-    }
+    await this.forceCleanWorkspace();
+    console.log(chalk.green('✓ 工作区已清理'));
 
     // 2. 切换分支
     result = await this.runCommand(`git checkout ${branchName}`);
     if (!result.success) {
-      // 如果切换失败，尝试强制切换
       console.log(chalk.yellow('⚠ 普通切换失败，尝试强制切换...'));
+      await this.forceCleanWorkspace();
       result = await this.runCommand(`git checkout -f ${branchName}`);
 
       if (!result.success) {
@@ -228,20 +241,45 @@ class Builder {
     }
     console.log(chalk.green(`✓ 已切换到 ${branchName}`));
 
-    // 3. Pull 最新代码（带重试）
+    // 3. 与远程同步（优先 hard reset，避免 pull 合并冲突）
     if (this.config.autoFetchPull) {
+      let synced = false;
+      let lastError = '';
+
       for (let i = 0; i < retries; i++) {
-        result = await this.runCommand('git pull');
-        if (result.success) break;
+        if (i > 0) {
+          console.log(
+            chalk.yellow(`⚠ 同步远程失败，清理冲突后重试... (${i + 1}/${retries})`),
+          );
+          await this.forceCleanWorkspace();
+          await this.runCommand(`git checkout -f ${branchName}`);
+        }
+
+        const resetResult = await this.hardResetBranchToOrigin(branchName);
+        if (resetResult.success) {
+          synced = true;
+          break;
+        }
+        lastError = resetResult.error || 'hard reset 失败';
+
+        // 无 origin/分支 时回退 git pull（仍会在每次重试前 forceClean）
+        const pullResult = await this.runCommand('git pull --no-edit');
+        if (pullResult.success) {
+          synced = true;
+          break;
+        }
+        lastError = pullResult.error || lastError;
 
         if (i < retries - 1) {
-          console.log(chalk.yellow(`⚠ Pull 失败，${3 - i} 秒后重试... (${i + 1}/${retries})`));
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
       }
 
-      if (!result.success) {
-        throw new Error(`拉取代码失败: ${result.error}\n\n💡 请检查网络连接或稍后重试`);
+      if (!synced) {
+        await this.forceCleanWorkspace();
+        throw new Error(
+          `拉取代码失败: ${lastError}\n\n💡 本地合并冲突已清理；若仍失败请检查远程分支或网络`,
+        );
       }
       console.log(chalk.green('✓ 代码已更新'));
     } else {

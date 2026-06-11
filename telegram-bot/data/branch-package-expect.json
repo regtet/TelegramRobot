@@ -2274,5 +2274,705 @@
     ],
     "updatedAt": "2026-06-06T09:48:51.439Z",
     "source": "group_announce"
+  },
+  "888pierrot": {
+    "branch": "888pierrot",
+    "packageId": "13",
+    "series": "KK",
+    "branchNameHint": "888pierrot",
+    "matchTokens": [
+      "888pierrot",
+      "888pierrot22"
+    ],
+    "domains": [
+      "888pierrot22",
+      "888pierrot",
+      "888pierrot"
+    ],
+    "updatedAt": "2026-06-06T10:24:47.727Z",
+    "source": "group_announce"
+  },
+  "localpg": {
+    "branch": "localpg",
+    "packageId": "10",
+    "series": "EK",
+    "branchNameHint": "localpg",
+    "matchTokens": [
+      "localpg",
+      "eklocalpg"
+    ],
+    "domains": [
+      "eklocalpg",
+      "localpg"
+    ],
+    "updatedAt": "2026-06-06T12:36:00.754Z",
+    "source": "group_announce"
+  },
+  "hms-bottles": {
+    "branch": "hms-bottles",
+    "packageId": "29",
+    "series": "HMS",
+    "branchNameHint": "hms-bottles",
+    "matchTokens": [
+      "hms-bottles",
+      "hmsbottles"
+    ],
+    "domains": [
+      "hms-bottles",
+      "hms-bottles"
+    ],
+    "updatedAt": "2026-06-06T15:34:21.503Z",
+    "source": "group_announce"
+  },
+  "pigmentpg": {
+    "branch": "pigmentpg",
+    "packageId": "23",
+    "series": "91",
+    "branchNameHint": "pigmentpg",
+    "matchTokens": [
+      "pigmentpg",
+      "pigment-pg",
+      "91-pigment-pg",
+      "91pigmentpg",
+      "91-pigmentpg",
+      "pigmentpg.91-grupo",
+      "pigmentpg91grupo",
+      "91-grupo"
+    ],
+    "domains": [
+      "pigment-pg",
+      "91-pigment-pg",
+      "91-pigmentpg",
+      "pigmentpg.91-grupo"
+    ],
+    "updatedAt": "2026-06-06T17:50:29.497Z",
+    "source": "group_announce"
+  },
+  "walkwaypg": {
+    "branch": "walkwaypg",
+    "packageId": "5",
+    "series": "VOY",
+    "branchNameHint": "walkwaypg",
+    "matchTokens": [
+      "walkwaypg",
+      "walkway-pg",
+      "voy-walkway-pg",
+      "voywalkwaypg",
+      "voy-walkwaypg",
+      "walkwaypg.voy-grupo",
+      "walkwaypgvoygrupo",
+      "voy-grupo"
+    ],
+    "domains": [
+      "walkway-pg",
+      "voy-walkway-pg",
+      "voy-walkwaypg",
+      "walkwaypg.voy-grupo"
+    ],
+    "updatedAt": "2026-06-06T19:51:44.756Z",
+    "source": "group_announce"
+  },
+  "xw-maneiropg": {
+    "branch": "xw-maneiropg",
+    "packageId": "27",
+    "series": "XW",
+    "branchNameHint": "xw-maneiropg",
+    "matchTokens": [
+      "xw-maneiropg",
+      "xwmaneiropg",
+      "maneiro-pg",
+      "maneiropg"
+    ],
+    "domains": [
+      "xw-maneiropg",
+      "maneiro-pg"
+    ],
+    "updatedAt": "2026-06-06T20:36:34.910Z",
+    "source": "group_announce"
+  },
+  "wa-remo": {
+    "branch": "wa-remo",
+    "packageId": "4",
+    "series": "WA",
+    "branchNameHint": "wa-remo",
+    "matchTokens": [
+      "wa-remo",
+      "waremo"
+    ],
+    "domains": [
+      "wa-remo",
+      "wa-remo"
+    ],
+    "updatedAt": "2026-06-07T08:20:27.288Z",
+    "source": "group_announce"
+  },
+  "mk-betsmk1": {
+    "branch": "mk-betsmk1",
+    "packageId": "12",
+    "series": "MK",
+    "branchNameHint": "mk-betsmk1",
+    "matchTokens": [
+      "mk-betsmk1",
+      "betsmk1",
+      "betsmk"
+    ],
+    "domains": [
+      "betsmk1",
+      "betsmk"
+    ],
+    "updatedAt": "2026-06-07T08:26:05.920Z",
+    "source": "group_announce"
+  },
+  "zg-a-88a": {
+    "branch": "zg-a-88a",
+    "packageId": "25",
+    "series": "ZG",
+    "branchNameHint": "zg-a-88a",
+    "matchTokens": [
+      "zg-a-88a",
+      "a-88a",
+      "a88a"
+    ],
+    "domains": [
+      "a-88a",
+      "a88a"
+    ],
+    "updatedAt": "2026-06-07T08:26:51.906Z",
+    "source": "group_announce"
+  },
+  "zg-ricox-7": {
+    "branch": "zg-ricox-7",
+    "packageId": "27",
+    "series": "ZG",
+    "branchNameHint": "zg-ricox-7",
+    "matchTokens": [
+      "zg-ricox-7",
+      "ricox-7",
+      "ricox7"
+    ],
+    "domains": [
+      "ricox-7",
+      "ricox7"
+    ],
+    "updatedAt": "2026-06-07T08:27:39.611Z",
+    "source": "group_announce"
+  },
+  "vontadepg": {
+    "branch": "vontadepg",
+    "packageId": "16",
+    "series": "DY",
+    "branchNameHint": "vontadepg",
+    "matchTokens": [
+      "vontadepg",
+      "dyvontadepg",
+      "vontadepg.dy-grupo",
+      "vontadepgdygrupo",
+      "dy-grupo"
+    ],
+    "domains": [
+      "dyvontadepg",
+      "vontadepg",
+      "vontadepg.dy-grupo"
+    ],
+    "updatedAt": "2026-06-07T11:12:43.248Z",
+    "source": "group_announce"
+  },
+  "offsidepg": {
+    "branch": "offsidepg",
+    "packageId": "5",
+    "series": "W1",
+    "branchNameHint": "offsidepg",
+    "matchTokens": [
+      "offsidepg",
+      "offside-pg",
+      "w1-offside-pg",
+      "w1offsidepg",
+      "w1offside-pg",
+      "offsidepg.w1-grupo",
+      "offsidepgw1grupo",
+      "w1-grupo"
+    ],
+    "domains": [
+      "offside-pg",
+      "w1-offside-pg",
+      "w1offside-pg",
+      "offsidepg",
+      "offsidepg.w1-grupo"
+    ],
+    "updatedAt": "2026-06-07T20:01:02.732Z",
+    "source": "group_announce"
+  },
+  "zg-brl-777": {
+    "branch": "zg-brl-777",
+    "packageId": "28",
+    "series": "ZG",
+    "branchNameHint": "zg-brl-777",
+    "matchTokens": [
+      "zg-brl-777",
+      "brl-777",
+      "brl777"
+    ],
+    "domains": [
+      "brl-777",
+      "brl777"
+    ],
+    "updatedAt": "2026-06-08T08:58:49.066Z",
+    "source": "group_announce"
+  },
+  "zg-skyeagle-pg": {
+    "branch": "zg-skyeagle-pg",
+    "packageId": "29",
+    "series": "ZG",
+    "branchNameHint": "zg-skyeagle-pg",
+    "matchTokens": [
+      "zg-skyeagle-pg",
+      "skyeagle-pg",
+      "skyeaglepg"
+    ],
+    "domains": [
+      "skyeagle-pg",
+      "skyeaglepg"
+    ],
+    "updatedAt": "2026-06-08T09:06:15.848Z",
+    "source": "group_announce"
+  },
+  "agave777": {
+    "branch": "agave777",
+    "packageId": "24",
+    "series": "FA",
+    "branchNameHint": "agave777",
+    "matchTokens": [
+      "agave777",
+      "agave-777",
+      "fa-agave777",
+      "faagave777"
+    ],
+    "domains": [
+      "agave-777",
+      "fa-agave777"
+    ],
+    "updatedAt": "2026-06-08T09:47:17.149Z",
+    "source": "group_announce"
+  },
+  "scoobypg": {
+    "branch": "scoobypg",
+    "packageId": "35",
+    "series": "BOI",
+    "branchNameHint": "scoobypg",
+    "matchTokens": [
+      "scoobypg",
+      "scooby-pg"
+    ],
+    "domains": [
+      "scooby-pg",
+      "scoobypg"
+    ],
+    "updatedAt": "2026-06-08T09:56:51.207Z",
+    "source": "group_announce"
+  },
+  "537win": {
+    "branch": "537win",
+    "packageId": "25",
+    "series": "777CLUB",
+    "branchNameHint": "537win",
+    "matchTokens": [
+      "537win",
+      "537win1"
+    ],
+    "domains": [
+      "537win1",
+      "537win",
+      "537win"
+    ],
+    "updatedAt": "2026-06-08T10:38:29.971Z",
+    "source": "group_announce"
+  },
+  "descanso777": {
+    "branch": "descanso777",
+    "packageId": "6",
+    "series": "777",
+    "branchNameHint": "descanso777",
+    "matchTokens": [
+      "descanso777",
+      "777descanso-777",
+      "777descanso777",
+      "descanso.777-equipe",
+      "descanso777equipe",
+      "descanso",
+      "777-equipe"
+    ],
+    "domains": [
+      "777descanso-777",
+      "descanso777",
+      "descanso.777-equipe"
+    ],
+    "updatedAt": "2026-06-08T13:09:17.785Z",
+    "source": "group_announce"
+  },
+  "kf-eee": {
+    "branch": "kf-eee",
+    "packageId": "19",
+    "series": "KF",
+    "branchNameHint": "kf-eee",
+    "matchTokens": [
+      "kf-eee",
+      "kfeee",
+      "eeekf"
+    ],
+    "domains": [
+      "kf-eee",
+      "eeekf",
+      "eeekf"
+    ],
+    "updatedAt": "2026-06-08T17:10:35.214Z",
+    "source": "group_announce"
+  },
+  "dustingpg": {
+    "branch": "dustingpg",
+    "packageId": "15",
+    "series": "WE",
+    "branchNameHint": "dustingpg",
+    "matchTokens": [
+      "dustingpg",
+      "dusting-pg",
+      "we-dusting-pg",
+      "wedustingpg",
+      "wedustinggpg",
+      "dustingpg.we-grupo",
+      "dustingpgwegrupo",
+      "we-grupo"
+    ],
+    "domains": [
+      "dusting-pg",
+      "we-dusting-pg",
+      "wedustinggpg",
+      "dustingpg.we-grupo"
+    ],
+    "updatedAt": "2026-06-08T19:59:33.640Z",
+    "source": "group_announce"
+  },
+  "assuntopg": {
+    "branch": "assuntopg",
+    "packageId": "11",
+    "series": "EK",
+    "branchNameHint": "assuntopg",
+    "matchTokens": [
+      "assuntopg",
+      "ekassuntopg"
+    ],
+    "domains": [
+      "ekassuntopg",
+      "assuntopg"
+    ],
+    "updatedAt": "2026-06-09T09:54:00.864Z",
+    "source": "group_announce"
+  },
+  "manga-hexapg": {
+    "branch": "manga-hexapg",
+    "packageId": "24",
+    "series": "MANGA",
+    "branchNameHint": "manga-hexapg",
+    "matchTokens": [
+      "manga-hexapg",
+      "hexapg",
+      "manga-hexa-pg",
+      "mangahexapg",
+      "mango-hexa-pg",
+      "mangohexapg"
+    ],
+    "domains": [
+      "hexapg",
+      "manga-hexa-pg",
+      "mango-hexa-pg"
+    ],
+    "updatedAt": "2026-06-09T10:35:25.673Z",
+    "source": "group_announce"
+  },
+  "682win": {
+    "branch": "682win",
+    "packageId": "31",
+    "series": "888",
+    "branchNameHint": "682win",
+    "matchTokens": [
+      "682win"
+    ],
+    "domains": [],
+    "updatedAt": "2026-06-09T11:01:33.584Z",
+    "source": "group_announce"
+  },
+  "passagempg": {
+    "branch": "passagempg",
+    "packageId": "15",
+    "series": "AJ",
+    "branchNameHint": "passagempg",
+    "matchTokens": [
+      "passagempg",
+      "aj-passagem",
+      "ajpassagem",
+      "passagempg.aj-grupo",
+      "passagempgajgrupo",
+      "aj-grupo"
+    ],
+    "domains": [
+      "aj-passagem",
+      "passagempg",
+      "passagempg.aj-grupo"
+    ],
+    "updatedAt": "2026-06-09T13:12:04.416Z",
+    "source": "group_announce"
+  },
+  "seamanpg": {
+    "branch": "seamanpg",
+    "packageId": "6",
+    "series": "VOY",
+    "branchNameHint": "seamanpg",
+    "matchTokens": [
+      "seamanpg"
+    ],
+    "domains": [],
+    "updatedAt": "2026-06-09T19:56:59.907Z",
+    "source": "group_announce"
+  },
+  "falarpg": {
+    "branch": "falarpg",
+    "packageId": "19",
+    "series": "WP",
+    "branchNameHint": "falarpg",
+    "matchTokens": [
+      "falarpg",
+      "falar-pg",
+      "wp-falarpg",
+      "wpfalarpg"
+    ],
+    "domains": [
+      "falar-pg",
+      "wp-falarpg"
+    ],
+    "updatedAt": "2026-06-10T08:57:37.953Z",
+    "source": "group_announce"
+  },
+  "zg-b-58a": {
+    "branch": "zg-b-58a",
+    "packageId": "32",
+    "series": "ZG",
+    "branchNameHint": "zg-b-58a",
+    "matchTokens": [
+      "zg-b-58a",
+      "b-58a",
+      "b58a"
+    ],
+    "domains": [
+      "b-58a",
+      "b58a"
+    ],
+    "updatedAt": "2026-06-10T08:58:27.948Z",
+    "source": "group_announce"
+  },
+  "zg-rs-panda1": {
+    "branch": "zg-rs-panda1",
+    "packageId": "33",
+    "series": "ZG",
+    "branchNameHint": "zg-rs-panda1",
+    "matchTokens": [
+      "zg-rs-panda1",
+      "rs-panda1",
+      "rspanda1",
+      "rs-panda",
+      "rspanda"
+    ],
+    "domains": [
+      "rs-panda1",
+      "rs-panda"
+    ],
+    "updatedAt": "2026-06-10T08:59:13.635Z",
+    "source": "group_announce"
+  },
+  "okokfifa11": {
+    "branch": "okokfifa11",
+    "packageId": "17",
+    "series": "OKOK",
+    "branchNameHint": "okokfifa11",
+    "matchTokens": [
+      "okokfifa11",
+      "okokfifa"
+    ],
+    "domains": [
+      "okokfifa11",
+      "okokfifa",
+      "okokfifa"
+    ],
+    "updatedAt": "2026-06-10T09:48:01.614Z",
+    "source": "group_announce"
+  },
+  "mk-fifamk1": {
+    "branch": "mk-fifamk1",
+    "packageId": "13",
+    "series": "MK",
+    "branchNameHint": "mk-fifamk1",
+    "matchTokens": [
+      "mk-fifamk1",
+      "fifamk1",
+      "fifamk"
+    ],
+    "domains": [
+      "fifamk1",
+      "fifamk"
+    ],
+    "updatedAt": "2026-06-10T10:01:43.080Z",
+    "source": "group_announce"
+  },
+  "kk-777sucesso-kk": {
+    "branch": "kk-777sucesso-kk",
+    "packageId": "14",
+    "series": "KK",
+    "branchNameHint": "kk-777sucesso-kk",
+    "matchTokens": [
+      "kk-777sucesso-kk",
+      "777sucesso-kk",
+      "777sucessokk"
+    ],
+    "domains": [
+      "777sucesso-kk",
+      "777sucessokk",
+      "777sucessokk"
+    ],
+    "updatedAt": "2026-06-10T10:04:16.870Z",
+    "source": "group_announce"
+  },
+  "ritmopg": {
+    "branch": "ritmopg",
+    "packageId": "17",
+    "series": "DY",
+    "branchNameHint": "ritmopg",
+    "matchTokens": [
+      "ritmopg",
+      "dyritmopg",
+      "ritmopg.dy-grupo",
+      "ritmopgdygrupo",
+      "dy-grupo"
+    ],
+    "domains": [
+      "dyritmopg",
+      "ritmopg",
+      "ritmopg.dy-grupo"
+    ],
+    "updatedAt": "2026-06-10T13:20:57.185Z",
+    "source": "group_announce"
+  },
+  "fp-estadiopg": {
+    "branch": "fp-estadiopg",
+    "packageId": "6",
+    "series": "FP",
+    "branchNameHint": "fp-estadiopg",
+    "matchTokens": [
+      "fp-estadiopg",
+      "fpestadiopg",
+      "estadio-pg",
+      "estadiopg",
+      "estadiopg.fp-grupo",
+      "estadiopgfpgrupo",
+      "fp-grupo"
+    ],
+    "domains": [
+      "fp-estadiopg",
+      "estadio-pg",
+      "estadiopg.fp-grupo"
+    ],
+    "updatedAt": "2026-06-10T17:32:58.542Z",
+    "source": "group_announce"
+  },
+  "plywoodpg": {
+    "branch": "plywoodpg",
+    "packageId": "24",
+    "series": "91",
+    "branchNameHint": "plywoodpg",
+    "matchTokens": [
+      "plywoodpg",
+      "plywood-pg",
+      "91-plywoodspg",
+      "91plywoodspg",
+      "91-plywoodpg",
+      "91plywoodpg",
+      "plywoodpg.91-grupo",
+      "plywoodpg91grupo",
+      "91-grupo"
+    ],
+    "domains": [
+      "plywood-pg",
+      "91-plywoodspg",
+      "91-plywoodpg",
+      "plywoodpg.91-grupo"
+    ],
+    "updatedAt": "2026-06-10T18:01:55.234Z",
+    "source": "group_announce"
+  },
+  "howlingpg": {
+    "branch": "howlingpg",
+    "packageId": "18",
+    "series": "A8",
+    "branchNameHint": "howlingpg",
+    "matchTokens": [
+      "howlingpg",
+      "howling-pg",
+      "a8-howlingpg",
+      "a8howlingpg"
+    ],
+    "domains": [
+      "howling-pg",
+      "a8-howlingpg",
+      "howlingpg"
+    ],
+    "updatedAt": "2026-06-10T19:58:59.738Z",
+    "source": "group_announce"
+  },
+  "zg-bat-robin": {
+    "branch": "zg-bat-robin",
+    "packageId": "34",
+    "series": "ZG",
+    "branchNameHint": "zg-bat-robin",
+    "matchTokens": [
+      "zg-bat-robin",
+      "bat-robin",
+      "batrobin"
+    ],
+    "domains": [
+      "bat-robin",
+      "bat-robin"
+    ],
+    "updatedAt": "2026-06-11T08:26:21.415Z",
+    "source": "group_announce"
+  },
+  "zg-78-u": {
+    "branch": "zg-78-u",
+    "packageId": "35",
+    "series": "ZG",
+    "branchNameHint": "zg-78-u",
+    "matchTokens": [
+      "zg-78-u",
+      "78-u"
+    ],
+    "domains": [
+      "78-u",
+      "78u"
+    ],
+    "updatedAt": "2026-06-11T08:27:02.596Z",
+    "source": "group_announce"
+  },
+  "zg-h-326": {
+    "branch": "zg-h-326",
+    "packageId": "36",
+    "series": "ZG",
+    "branchNameHint": "zg-h-326",
+    "matchTokens": [
+      "zg-h-326",
+      "h-326",
+      "h326"
+    ],
+    "domains": [
+      "h-326",
+      "h326"
+    ],
+    "updatedAt": "2026-06-11T08:27:45.446Z",
+    "source": "group_announce"
   }
 }
