@@ -33,6 +33,7 @@ const FileSplitter = require('./lib/build/file-splitter');
 const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./lib/core/config-reader');
 const { parsePackCommand } = require('./lib/core/parse-pack-command');
 const { syncPackageIdWithGit } = require('./lib/git/package-id-sync');
+const { syncProjectConfigWithGit } = require('./lib/git/project-config-sync');
 const { renderConfigScreenshots, tryUnlinkPngs } = require('./lib/core/config-code-image');
 const {
     parseAllowedChatIds,
@@ -4337,6 +4338,26 @@ function isBranchAllowed(branchName) {
     }
 
     async function handleAfterCheckoutForBuild(project, branchName, chatId, packageIdTarget) {
+        const configSyncResult = await syncProjectConfigWithGit(project.builder);
+        if (configSyncResult.ok && configSyncResult.skipped) {
+            console.log(chalk.gray(`[${branchName}] 项目配置无需修正，跳过提交`));
+        } else if (configSyncResult.ok) {
+            const detailText =
+                configSyncResult.details && configSyncResult.details.length > 0
+                    ? configSyncResult.details.join('；')
+                    : '';
+            console.log(
+                chalk.green(
+                    `[${branchName}] 项目配置已修正并推送${detailText ? `: ${detailText}` : ''}`,
+                ),
+            );
+        } else {
+            await project.builder.runCommand('git checkout -- src/config/config.js src/config/server.js');
+            const errMsg = configSyncResult.error || '未知错误';
+            console.log(chalk.red(`[${branchName}] 项目配置同步失败，已中止本分支打包: ${errMsg}`));
+            throw new Error(`项目配置同步失败: ${errMsg}`);
+        }
+
         if (packageIdTarget != null) {
             const syncResult = await syncPackageIdWithGit(project.builder, packageIdTarget);
             if (syncResult.ok && syncResult.skipped) {

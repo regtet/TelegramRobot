@@ -2974,5 +2974,156 @@
     ],
     "updatedAt": "2026-06-11T08:27:45.446Z",
     "source": "group_announce"
+  },
+  "tyuue1": {
+    "branch": "tyuue1",
+    "packageId": "13",
+    "series": "TY",
+    "branchNameHint": "tyuue1",
+    "matchTokens": [
+      "tyuue1",
+      "tyuue"
+    ],
+    "domains": [
+      "tyuue1",
+      "tyuue"
+    ],
+    "updatedAt": "2026-06-11T10:26:37.471Z",
+    "source": "group_announce"
+  },
+  "alfa-fc-96": {
+    "branch": "alfa-fc-96",
+    "packageId": "15",
+    "series": "ALFA",
+    "branchNameHint": "alfa-fc-96",
+    "matchTokens": [
+      "alfa-fc-96",
+      "fc-96",
+      "fc96"
+    ],
+    "domains": [
+      "fc-96",
+      "fc96",
+      "fc96"
+    ],
+    "updatedAt": "2026-06-11T10:29:07.223Z",
+    "source": "group_announce"
+  },
+  "547win": {
+    "branch": "547win",
+    "packageId": "25",
+    "series": "FA",
+    "branchNameHint": "547win",
+    "matchTokens": [
+      "547win",
+      "futebolarte-777",
+      "futebolarte777",
+      "fa-futebolarte777",
+      "fafutebolarte777"
+    ],
+    "domains": [
+      "futebolarte-777",
+      "fa-futebolarte777"
+    ],
+    "updatedAt": "2026-06-11T11:23:48.735Z",
+    "source": "group_announce"
+  },
+  "bet-513bet0": {
+    "branch": "bet-513bet0",
+    "packageId": "20",
+    "series": "BET经典版",
+    "branchNameHint": "bet-513bet0",
+    "matchTokens": [
+      "bet-513bet0",
+      "513bet0",
+      "513bet"
+    ],
+    "domains": [
+      "513bet0",
+      "513bet",
+      "513bet"
+    ],
+    "updatedAt": "2026-06-11T11:44:14.772Z",
+    "source": "group_announce"
+  },
+  "tufao777": {
+    "branch": "tufao777",
+    "packageId": "7",
+    "series": "777",
+    "branchNameHint": "tufao777",
+    "matchTokens": [
+      "tufao777",
+      "777tufao-777",
+      "777tufao777",
+      "tufao.777-equipe",
+      "tufao777equipe",
+      "tufao",
+      "777-equipe"
+    ],
+    "domains": [
+      "777tufao-777",
+      "tufao777",
+      "tufao.777-equipe"
+    ],
+    "updatedAt": "2026-06-11T12:38:12.642Z",
+    "source": "group_announce"
+  },
+  "dessertpg": {
+    "branch": "dessertpg",
+    "packageId": "18",
+    "series": "DZ",
+    "branchNameHint": "dessertpg",
+    "matchTokens": [
+      "dessertpg"
+    ],
+    "domains": [],
+    "updatedAt": "2026-06-11T18:50:46.450Z",
+    "source": "group_announce"
+  },
+  "knottedpg": {
+    "branch": "knottedpg",
+    "packageId": "7",
+    "series": "W1",
+    "branchNameHint": "knottedpg",
+    "matchTokens": [
+      "knottedpg"
+    ],
+    "domains": [],
+    "updatedAt": "2026-06-11T19:50:40.718Z",
+    "source": "group_announce"
+  },
+  "zg-luckypanda-77": {
+    "branch": "zg-luckypanda-77",
+    "packageId": "38",
+    "series": "ZG",
+    "branchNameHint": "zg-luckypanda-77",
+    "matchTokens": [
+      "zg-luckypanda-77",
+      "luckypanda-77",
+      "luckypanda77"
+    ],
+    "domains": [
+      "luckypanda-77",
+      "luckypanda77"
+    ],
+    "updatedAt": "2026-06-12T09:00:54.526Z",
+    "source": "group_announce"
+  },
+  "zg-w-86w": {
+    "branch": "zg-w-86w",
+    "packageId": "39",
+    "series": "ZG",
+    "branchNameHint": "zg-w-86w",
+    "matchTokens": [
+      "zg-w-86w",
+      "w-86w",
+      "w86w"
+    ],
+    "domains": [
+      "w-86w",
+      "w86w"
+    ],
+    "updatedAt": "2026-06-12T09:01:41.073Z",
+    "source": "group_announce"
   }
 }

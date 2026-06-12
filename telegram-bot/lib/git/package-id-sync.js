@@ -61,4 +61,6 @@ async function syncPackageIdWithGit(builder, packageId) {
 module.exports = {
     syncPackageIdWithGit,
     RETRY_ATTEMPTS,
+    RETRY_DELAY_MS,
+    delay,
 };
