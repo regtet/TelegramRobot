@@ -3,9 +3,8 @@
  * 持久化到 data/branch-announce-pending.json，重启不丢；超过 TTL 自动丢弃。
  */
 
-const fs = require('fs');
-const path = require('path');
 const { branchAnnouncePendingFile: PENDING_FILE } = require('../paths');
+const { readJson, writeJsonAtomic } = require('../core/json-store');
 
 const PENDING_TTL_MS = parseInt(
     process.env.BRANCH_ANNOUNCE_PENDING_TTL_MS || String(4 * 60 * 60 * 1000),
@@ -24,15 +23,8 @@ function isExpired(entry) {
 }
 
 function readDiskDb() {
-    try {
-        if (!fs.existsSync(PENDING_FILE)) return {};
-        const raw = fs.readFileSync(PENDING_FILE, 'utf8').trim();
-        if (!raw) return {};
-        const data = JSON.parse(raw);
-        return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-    } catch {
-        return {};
-    }
+    const data = readJson(PENDING_FILE, {});
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 }
 
 function writeDiskDb() {
@@ -41,8 +33,7 @@ function writeDiskDb() {
         if (!entry || isExpired(entry)) continue;
         out[key] = entry;
     }
-    fs.mkdirSync(path.dirname(PENDING_FILE), { recursive: true });
-    fs.writeFileSync(PENDING_FILE, `${JSON.stringify(out, null, 2)}\n`, 'utf8');
+    writeJsonAtomic(PENDING_FILE, out);
 }
 
 function loadFromDisk() {

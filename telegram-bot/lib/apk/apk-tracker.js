@@ -1,17 +1,9 @@
-const fs = require('fs');
 const { apkPendingFile: DB_FILE } = require('../paths');
+const { readJson, writeJsonAtomic, bigintReplacer } = require('../core/json-store');
 
 function readDb() {
-  try {
-    if (!fs.existsSync(DB_FILE)) return [];
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    if (!raw.trim()) return [];
-    const data = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-    return data;
-  } catch {
-    return [];
-  }
+  const data = readJson(DB_FILE, []);
+  return Array.isArray(data) ? data : [];
 }
 
 function toJsonSafe(value) {
@@ -22,11 +14,7 @@ function toJsonSafe(value) {
 
 function writeDb(list) {
   const safe = Array.isArray(list) ? list : [];
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify(safe, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
-    'utf8',
-  );
+  writeJsonAtomic(DB_FILE, safe, { newline: false, replacer: bigintReplacer });
 }
 
 function normalizeBranch(branch) {

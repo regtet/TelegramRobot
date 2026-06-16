@@ -3125,5 +3125,545 @@
     ],
     "updatedAt": "2026-06-12T09:01:41.073Z",
     "source": "group_announce"
+  },
+  "boi-dorpg1": {
+    "branch": "boi-dorpg1",
+    "packageId": "36",
+    "series": "BOI",
+    "branchNameHint": "boi-dorpg1",
+    "matchTokens": [
+      "boi-dorpg1",
+      "dorpg1",
+      "dorpg"
+    ],
+    "domains": [
+      "dorpg1",
+      "dorpg"
+    ],
+    "updatedAt": "2026-06-12T09:57:36.045Z",
+    "source": "group_announce"
+  },
+  "683win": {
+    "branch": "683win",
+    "packageId": "33",
+    "series": "888",
+    "branchNameHint": "683win",
+    "matchTokens": [
+      "683win",
+      "683win1"
+    ],
+    "domains": [
+      "683win1",
+      "683win",
+      "683win"
+    ],
+    "updatedAt": "2026-06-12T10:25:01.710Z",
+    "source": "group_announce"
+  },
+  "manga-futebol": {
+    "branch": "manga-futebol",
+    "packageId": "25",
+    "series": "MANGA",
+    "branchNameHint": "manga-futebol",
+    "matchTokens": [
+      "manga-futebol",
+      "mangafutebol",
+      "manga-futebol-pg",
+      "mangafutebolpg",
+      "mango-futebol-pg",
+      "mangofutebolpg"
+    ],
+    "domains": [
+      "manga-futebol",
+      "manga-futebol-pg",
+      "mango-futebol-pg"
+    ],
+    "updatedAt": "2026-06-12T12:44:49.847Z",
+    "source": "group_announce"
+  },
+  "corpopg": {
+    "branch": "corpopg",
+    "packageId": "17",
+    "series": "AJ",
+    "branchNameHint": "corpopg",
+    "matchTokens": [
+      "corpopg",
+      "aj-corpo-pg",
+      "ajcorpopg",
+      "aj-corpopg",
+      "corpopg.aj-grupo",
+      "corpopgajgrupo",
+      "aj-grupo"
+    ],
+    "domains": [
+      "aj-corpo-pg",
+      "aj-corpopg",
+      "corpopg",
+      "corpopg.aj-grupo"
+    ],
+    "updatedAt": "2026-06-12T12:56:17.717Z",
+    "source": "group_announce"
+  },
+  "fa8-mamao777": {
+    "branch": "fa8-mamao777",
+    "packageId": "10",
+    "series": "FA8",
+    "branchNameHint": "fa8-mamao777",
+    "matchTokens": [
+      "fa8-mamao777",
+      "fa8-mamao-777",
+      "fa8mamao777"
+    ],
+    "domains": [
+      "fa8-mamao-777",
+      "fa8-mamao777"
+    ],
+    "updatedAt": "2026-06-12T15:49:27.056Z",
+    "source": "group_announce"
+  },
+  "we-garnish-pg": {
+    "branch": "we-garnish-pg",
+    "packageId": "17",
+    "series": "WE",
+    "branchNameHint": "we-garnish-pg",
+    "matchTokens": [
+      "we-garnish-pg",
+      "garnish-pg",
+      "garnishpg",
+      "wegarnishpg",
+      "we-garnishspg",
+      "wegarnishspg",
+      "garnishpg.we-grupo",
+      "garnishpgwegrupo",
+      "we-grupo"
+    ],
+    "domains": [
+      "garnish-pg",
+      "we-garnish-pg",
+      "we-garnishspg",
+      "garnishpg",
+      "garnishpg.we-grupo"
+    ],
+    "updatedAt": "2026-06-12T20:05:27.482Z",
+    "source": "group_announce"
+  },
+  "zg-a979-win": {
+    "branch": "zg-a979-win",
+    "packageId": "40",
+    "series": "ZG",
+    "branchNameHint": "zg-a979-win",
+    "matchTokens": [
+      "zg-a979-win",
+      "a979-win",
+      "a979win"
+    ],
+    "domains": [
+      "a979-win",
+      "a979win"
+    ],
+    "updatedAt": "2026-06-13T08:51:53.173Z",
+    "source": "group_announce"
+  },
+  "zg-7k-double": {
+    "branch": "zg-7k-double",
+    "packageId": "41",
+    "series": "ZG",
+    "branchNameHint": "zg-7k-double",
+    "matchTokens": [
+      "zg-7k-double",
+      "7k-double",
+      "7kdouble"
+    ],
+    "domains": [
+      "7k-double",
+      "7kdouble"
+    ],
+    "updatedAt": "2026-06-13T08:52:31.831Z",
+    "source": "group_announce"
+  },
+  "okokhades": {
+    "branch": "okokhades",
+    "packageId": "18",
+    "series": "OKOK",
+    "branchNameHint": "okokhades",
+    "matchTokens": [
+      "okokhades",
+      "okokhades11"
+    ],
+    "domains": [
+      "okokhades11",
+      "okokhades",
+      "okokhades"
+    ],
+    "updatedAt": "2026-06-13T09:51:44.428Z",
+    "source": "group_announce"
+  },
+  "jackkk": {
+    "branch": "jackkk",
+    "packageId": "15",
+    "series": "KK",
+    "branchNameHint": "jackkk",
+    "matchTokens": [
+      "jackkk",
+      "jackkk22"
+    ],
+    "domains": [
+      "jackkk22",
+      "jackkk",
+      "jackkk"
+    ],
+    "updatedAt": "2026-06-13T11:04:20.711Z",
+    "source": "group_announce"
+  },
+  "ek-palco-pg": {
+    "branch": "ek-palco-pg",
+    "packageId": "12",
+    "series": "EK",
+    "branchNameHint": "ek-palco-pg",
+    "matchTokens": [
+      "ek-palco-pg",
+      "palco-pg",
+      "palcopg",
+      "ek-palcopg",
+      "ekpalcopg"
+    ],
+    "domains": [
+      "palco-pg",
+      "ek-palcopg"
+    ],
+    "updatedAt": "2026-06-13T12:43:57.265Z",
+    "source": "group_announce"
+  },
+  "hms-champion": {
+    "branch": "hms-champion",
+    "packageId": "32",
+    "series": "HMS",
+    "branchNameHint": "hms-champion",
+    "matchTokens": [
+      "hms-champion",
+      "hmschampion"
+    ],
+    "domains": [
+      "hms-champion",
+      "hms-champion"
+    ],
+    "updatedAt": "2026-06-13T13:23:59.431Z",
+    "source": "group_announce"
+  },
+  "zg-gu-9": {
+    "branch": "zg-gu-9",
+    "packageId": "42",
+    "series": "ZG",
+    "branchNameHint": "zg-gu-9",
+    "matchTokens": [
+      "zg-gu-9",
+      "gu-9"
+    ],
+    "domains": [
+      "gu-9",
+      "gu9"
+    ],
+    "updatedAt": "2026-06-14T08:30:09.401Z",
+    "source": "group_announce"
+  },
+  "pop-sen": {
+    "branch": "pop-sen",
+    "packageId": "34",
+    "series": "POP",
+    "branchNameHint": "pop-sen",
+    "matchTokens": [
+      "pop-sen",
+      "popsen"
+    ],
+    "domains": [
+      "pop-sen",
+      "popsen"
+    ],
+    "updatedAt": "2026-06-14T08:30:52.287Z",
+    "source": "group_announce"
+  },
+  "mktesal1": {
+    "branch": "mktesal1",
+    "packageId": "14",
+    "series": "MK",
+    "branchNameHint": "mktesal1",
+    "matchTokens": [
+      "mktesal1",
+      "mktesal"
+    ],
+    "domains": [
+      "mktesal1",
+      "mktesal"
+    ],
+    "updatedAt": "2026-06-14T10:02:35.525Z",
+    "source": "group_announce"
+  },
+  "xwfarofapg": {
+    "branch": "xwfarofapg",
+    "packageId": "28",
+    "series": "XW",
+    "branchNameHint": "xwfarofapg",
+    "matchTokens": [
+      "xwfarofapg",
+      "farofapg"
+    ],
+    "domains": [
+      "xwfarofapg",
+      "farofapg"
+    ],
+    "updatedAt": "2026-06-14T10:03:21.404Z",
+    "source": "group_announce"
+  },
+  "dy-seguirpg.dy-grupo": {
+    "branch": "dy-seguirpg.dy-grupo",
+    "packageId": "19",
+    "series": "DY",
+    "branchNameHint": "dy-seguirpg.dy-grupo",
+    "matchTokens": [
+      "dy-seguirpg.dy-grupo",
+      "dyseguirpg",
+      "seguirpg",
+      "seguirpg.dy-grupo",
+      "seguirpgdygrupo",
+      "dy-grupo"
+    ],
+    "domains": [
+      "dyseguirpg",
+      "seguirpg",
+      "seguirpg.dy-grupo"
+    ],
+    "updatedAt": "2026-06-14T10:04:21.271Z",
+    "source": "group_announce"
+  },
+  "joggingpg": {
+    "branch": "joggingpg",
+    "packageId": "8",
+    "series": "W1",
+    "branchNameHint": "joggingpg",
+    "matchTokens": [
+      "joggingpg",
+      "jogging-pg",
+      "w1-jogging-pg",
+      "w1joggingpg",
+      "w1-joggihgpg",
+      "w1joggihgpg",
+      "joggingpg.w1-grupo",
+      "joggingpgw1grupo",
+      "w1-grupo"
+    ],
+    "domains": [
+      "jogging-pg",
+      "w1-jogging-pg",
+      "w1-joggihgpg",
+      "joggingpg",
+      "joggingpg.w1-grupo"
+    ],
+    "updatedAt": "2026-06-14T19:51:45.424Z",
+    "source": "group_announce"
+  },
+  "zg-fila-pg": {
+    "branch": "zg-fila-pg",
+    "packageId": "37",
+    "series": "ZG",
+    "branchNameHint": "zg-fila-pg",
+    "matchTokens": [
+      "zg-fila-pg",
+      "fila-pg",
+      "filapg"
+    ],
+    "domains": [
+      "fila-pg",
+      "filapg"
+    ],
+    "updatedAt": "2026-06-15T08:50:40.757Z",
+    "source": "group_announce"
+  },
+  "zg-superbr-123": {
+    "branch": "zg-superbr-123",
+    "packageId": "44",
+    "series": "ZG",
+    "branchNameHint": "zg-superbr-123",
+    "matchTokens": [
+      "zg-superbr-123",
+      "superbr-123",
+      "superbr123"
+    ],
+    "domains": [
+      "superbr-123",
+      "superbr123"
+    ],
+    "updatedAt": "2026-06-15T08:53:32.630Z",
+    "source": "group_announce"
+  },
+  "bolao777": {
+    "branch": "bolao777",
+    "packageId": "26",
+    "series": "FA",
+    "branchNameHint": "bolao777",
+    "matchTokens": [
+      "bolao777",
+      "bolao-777",
+      "fa-bolao777",
+      "fabolao777"
+    ],
+    "domains": [
+      "bolao-777",
+      "fa-bolao777"
+    ],
+    "updatedAt": "2026-06-15T10:26:17.248Z",
+    "source": "group_announce"
+  },
+  "hms-headphones": {
+    "branch": "hms-headphones",
+    "packageId": "33",
+    "series": "HMS",
+    "branchNameHint": "hms-headphones",
+    "matchTokens": [
+      "hms-headphones",
+      "hmsheadphones"
+    ],
+    "domains": [
+      "hmsheadphones",
+      "hms-headphones"
+    ],
+    "updatedAt": "2026-06-15T10:27:21.806Z",
+    "source": "group_announce"
+  },
+  "570win": {
+    "branch": "570win",
+    "packageId": "27",
+    "series": "777CLUB",
+    "branchNameHint": "570win",
+    "matchTokens": [
+      "570win",
+      "570win1"
+    ],
+    "domains": [
+      "570win1",
+      "570win",
+      "570win"
+    ],
+    "updatedAt": "2026-06-15T11:05:52.250Z",
+    "source": "group_announce"
+  },
+  "explorar777": {
+    "branch": "explorar777",
+    "packageId": "9",
+    "series": "777",
+    "branchNameHint": "explorar777",
+    "matchTokens": [
+      "explorar777",
+      "777explorar-777",
+      "777explorar777",
+      "explorar.777-equipe",
+      "explorar777equipe",
+      "explorar",
+      "777-equipe"
+    ],
+    "domains": [
+      "777explorar-777",
+      "explorar777",
+      "explorar.777-equipe"
+    ],
+    "updatedAt": "2026-06-15T12:28:55.278Z",
+    "source": "group_announce"
+  },
+  "kf-ykjogo": {
+    "branch": "kf-ykjogo",
+    "packageId": "22",
+    "series": "KF",
+    "branchNameHint": "kf-ykjogo",
+    "matchTokens": [
+      "kf-ykjogo",
+      "kfykjogo",
+      "ykjogo"
+    ],
+    "domains": [
+      "kf-ykjogo",
+      "ykjogo"
+    ],
+    "updatedAt": "2026-06-15T17:10:58.749Z",
+    "source": "group_announce"
+  },
+  "hurlingpg": {
+    "branch": "hurlingpg",
+    "packageId": "18",
+    "series": "WE",
+    "branchNameHint": "hurlingpg",
+    "matchTokens": [
+      "hurlingpg",
+      "hurling-pg",
+      "we-hurling-pg",
+      "wehurlingpg",
+      "wehurlingspg",
+      "hurlingpg.we-grupo",
+      "hurlingpgwegrupo",
+      "we-grupo"
+    ],
+    "domains": [
+      "hurling-pg",
+      "we-hurling-pg",
+      "wehurlingspg",
+      "hurlingpg.we-grupo"
+    ],
+    "updatedAt": "2026-06-15T19:56:54.623Z",
+    "source": "group_announce"
+  },
+  "naturezapg": {
+    "branch": "naturezapg",
+    "packageId": "14",
+    "series": "TY",
+    "branchNameHint": "naturezapg",
+    "matchTokens": [
+      "naturezapg",
+      "oowty1",
+      "oowty"
+    ],
+    "domains": [
+      "oowty1",
+      "oowty"
+    ],
+    "updatedAt": "2026-06-16T11:12:19.929Z",
+    "source": "group_announce"
+  },
+  "ek-natureza-pg": {
+    "branch": "ek-natureza-pg",
+    "packageId": "13",
+    "series": "EK",
+    "branchNameHint": "ek-natureza-pg",
+    "matchTokens": [
+      "ek-natureza-pg",
+      "natureza-pg",
+      "naturezapg",
+      "ek-naturezapg",
+      "eknaturezapg"
+    ],
+    "domains": [
+      "natureza-pg",
+      "ek-naturezapg"
+    ],
+    "updatedAt": "2026-06-16T11:12:52.887Z",
+    "source": "group_announce"
+  },
+  "manga-brasil": {
+    "branch": "manga-brasil",
+    "packageId": "26",
+    "series": "MANGA",
+    "branchNameHint": "manga-brasil",
+    "matchTokens": [
+      "manga-brasil",
+      "mangabrasil",
+      "manga-brasil-pg",
+      "mangabrasilpg",
+      "mango-brasil-pg",
+      "mangobrasilpg"
+    ],
+    "domains": [
+      "manga-brasil",
+      "manga-brasil-pg",
+      "mango-brasil-pg"
+    ],
+    "updatedAt": "2026-06-16T11:13:55.386Z",
+    "source": "group_announce"
   }
 }

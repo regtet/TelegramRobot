@@ -14,7 +14,7 @@ const apkBuiltHistory = require('./lib/apk/apk-built-history');
 const branchPackageExpect = require('./lib/branch/branch-package-expect');
 const branchAnnounceState = require('./lib/branch/branch-announce-state');
 const branchGroupParse = require('./lib/branch/branch-group-auto-parse');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const { spawn } = require('child_process');
 
@@ -40,8 +40,22 @@ const {
     shouldHandleUserbotMessage,
 } = require('./lib/core/chat-filter');
 const { parseEnvBool } = require('./lib/core/env-bool');
+const { errMsg } = require('./lib/core/err');
+const {
+    inferApkFailureStage,
+    buildApkFailureTelegramMessage,
+    buildApkBatchSummaryText,
+} = require('./lib/apk/apk-messages');
+const {
+    formatZipAnalyzeMainDomains,
+    buildZipAnalyzeMessage,
+} = require('./lib/core/zip-analyze-message');
+const { createPackServerClient } = require('./lib/apk/pack-server');
+const { createS3Uploader } = require('./lib/apk/s3-uploader');
+const { withTimeout, gitBranchMatches, tryUnlinkIfExists } = require('./lib/core/util');
 const { BranchTunnelManager } = require('./lib/dev/branch-tunnel');
 const userBotLog = require('./lib/logging/user-bot-logger');
+const { pathInLogs, formatLogTime } = require('./lib/logging/app-logs');
 const apkPendingAdmin = require('./lib/apk/apk-pending-admin');
 const {
     extractBranchFromApkMessage,
@@ -92,6 +106,13 @@ const apiHash = process.env.API_HASH;
 const phoneNumber = process.env.PHONE_NUMBER;
 const chatId = process.env.CHAT_ID ? BigInt(process.env.CHAT_ID) : null;
 const allowedChatIds = parseAllowedChatIds();
+// 私聊触发打包白名单：仅这些用户私聊发来的「打包」会被处理，结果统一输出到目标群
+const dmPackAllowedIds = new Set(
+    (process.env.DM_PACK_ALLOWED_IDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+);
 let selfUserId = null;
 /** @type {import('./lib/dev/branch-tunnel').BranchTunnelManager | null} */
 let branchTunnelManager = null;
@@ -176,37 +197,55 @@ const s3Client = new S3Client({
     } : undefined,
 });
 
-// 打包状态锁
-// 构建状态管理
-let isBuilding = false;
-let currentBuildBranch = '';
-/** zip 构建所在项目名（WG-WEB / WGAME-WEB），与 currentBuildBranch 配套 */
-let currentBuildProjectName = '';
-let buildQueue = []; // 普通打包（zip）排队列表
-let currentBuildId = null; // 当前构建ID
-let shouldCancelBuild = false; // 取消标志
-/** 递增后使进行中的「打包」指令失效（含分支验证阶段） */
-let buildAbortToken = 0;
-let isPackPreparing = false; // 分支验证 / 入队准备阶段
+// 打包服务 HTTP 客户端 与 S3 上传器（从 index.js 抽出，依赖通过工厂注入）
+const packServerClient = createPackServerClient({
+    proxy: PACK_SERVER_PROXY,
+    log: userBotLog,
+});
+const { fetchFileList: fetchPackServerFileList, callPackApi, downloadFileWithRetry } =
+    packServerClient;
+const { uploadFileToS3 } = createS3Uploader({
+    s3Client,
+    bucket: S3_BUCKET,
+    region: S3_REGION,
+    log: userBotLog,
+});
 
-// APK 打包队列（按顺序执行，避免多条消息交错）
-let isApkBuilding = false;
-let apkBuildQueue = [];
-let currentApkBuildBranch = '';
-let currentApkBuildProjectName = '';
-let currentApkBuildChatId = null;
+// 打包状态锁：集中管理打包 / 队列等运行时可变状态（便于后续按模块拆分时注入）
+const state = {
+    // 构建（zip）状态
+    isBuilding: false,
+    currentBuildBranch: '',
+    /** zip 构建所在项目名（WG-WEB / WGAME-WEB），与 currentBuildBranch 配套 */
+    currentBuildProjectName: '',
+    buildQueue: [], // 普通打包（zip）排队列表
+    currentBuildId: null, // 当前构建ID
+    shouldCancelBuild: false, // 取消标志
+    /** 递增后使进行中的「打包」指令失效（含分支验证阶段） */
+    buildAbortToken: 0,
+    isPackPreparing: false, // 分支验证 / 入队准备阶段
 
-// 多分支「打包APK a b c」合并：未发汇总前再次触发会并入同一会话，只发一条 📊 统计
-let apkBatchChunkQueue = []; // { resolvedTargets, chatId, applyApkBuiltDedup? }[]
-let apkBatchWorkerPromise = null;
-/** 最近一条群内「📊 APK 批量打包统计」的消息与统计快照（单分支补打成功后可 edit 回填） */
-let apkBatchEditableSummaryRef = null; // { chatId, messageId, orderedBranches, outcomes } | null
+    // APK 打包队列（按顺序执行，避免多条消息交错）
+    isApkBuilding: false,
+    apkBuildQueue: [],
+    currentApkBuildBranch: '',
+    currentApkBuildProjectName: '',
+    currentApkBuildChatId: null,
 
-// 文件处理队列
-let isProcessingFile = false; // 是否正在处理文件
-let fileProcessQueue = []; // 文件处理排队列表
-/** 当前正在执行的压缩包检测任务（用于 Git 清理时保留占用分支） */
-let currentFileProcessTask = null;
+    // 多分支「打包APK a b c」合并：未发汇总前再次触发会并入同一会话，只发一条 📊 统计
+    apkBatchChunkQueue: [], // { resolvedTargets, chatId, applyApkBuiltDedup? }[]
+    apkBatchWorkerPromise: null,
+    /** 批量 APK 会话已占用的分支键集合（projectName::branch，小写），与单分支 APK 队列互相去重，避免同分支被打两次 */
+    apkBatchReserved: new Set(),
+    /** 最近一条群内「📊 APK 批量打包统计」的消息与统计快照（单分支补打成功后可 edit 回填） */
+    apkBatchEditableSummaryRef: null, // { chatId, messageId, orderedBranches, outcomes } | null
+
+    // 文件处理队列
+    isProcessingFile: false, // 是否正在处理文件
+    fileProcessQueue: [], // 文件处理排队列表
+    /** 当前正在执行的压缩包检测任务（用于 Git 清理时保留占用分支） */
+    currentFileProcessTask: null,
+};
 
 /**
  * 「打包」流程：checkout 后预收集检测文案 + 配置截图，等 zip 上传完成后再一并发送（避免多次拉代码）
@@ -313,22 +352,37 @@ function isBranchAllowed(branchName) {
         return null;
     }
 
+    /** 私聊触发打包的结果输出会话：优先 DM_PACK_TARGET_CHAT，否则回退到主群（CHAT_ID/CHAT_IDS 首个） */
+    function getDmPackTargetChatId() {
+        const raw = (process.env.DM_PACK_TARGET_CHAT || '').trim();
+        if (raw) {
+            try {
+                return BigInt(raw);
+            } catch {
+                console.log(chalk.yellow(`DM_PACK_TARGET_CHAT 解析失败，将回退到主群: ${raw}`));
+            }
+        }
+        return getPrimaryChatId();
+    }
+
     console.log(
         chalk.gray(
             '✓ 压缩包：上传即入 APK 等待队列 + 配置检测（手动「检测」与构建后检测默认关闭）',
         ),
     );
 
+    const ALL_MESSAGES_LOG_FILE = pathInLogs('all-messages.log');
+
     if (ENABLE_LOG_ALL_MESSAGES) {
         console.log(
             chalk.yellow(
-                '⚠ ENABLE_LOG_ALL_MESSAGES 已开启：终端将打印本账号全部收发消息（含 chatId），仅调试用',
+                `⚠ ENABLE_LOG_ALL_MESSAGES 已开启：本账号全部收发消息将写入日志文件（不在终端显示）：${ALL_MESSAGES_LOG_FILE}`,
             ),
         );
     }
 
-    /** 调试：打印任意会话消息，便于复制 CHAT_ID / CHAT_IDS */
-    async function logAllMessagesToTerminal(event) {
+    /** 调试：将任意会话消息写入 all-messages.log，便于复制 CHAT_ID / CHAT_IDS（不刷屏终端） */
+    async function logAllMessagesToFile(event) {
         const message = event.message;
         if (!message) return;
 
@@ -370,56 +424,41 @@ function isBranchAllowed(branchName) {
             }
         }
 
-        const preview = text
+        const preview = (text
             ? text.length > 300
                 ? `${text.slice(0, 300)}…`
                 : text
-            : mediaHint || '(无文本)';
+            : mediaHint || '(无文本)'
+        ).replace(/\r?\n/g, '\\n');
 
-        console.log(chalk.magenta('──────── 全量消息（调试） ────────'));
-        console.log(chalk.cyan(`  方向     : ${direction}`));
-        console.log(chalk.yellow(`  chatId   : ${chatIdStr}`));
-        if (chatType) console.log(chalk.gray(`  类型     : ${chatType}`));
-        if (chatTitle) console.log(chalk.gray(`  会话名   : ${chatTitle}`));
-        console.log(chalk.gray(`  发送者ID : ${senderId}`));
-        console.log(chalk.gray(`  消息ID   : ${message.id != null ? message.id : '-'}`));
-        console.log(chalk.white(`  内容     : ${preview}`));
-        console.log(chalk.magenta('────────────────────────────────\n'));
+        const parts = [
+            `方向=${direction}`,
+            `chatId=${chatIdStr}`,
+            chatType ? `类型=${chatType}` : '',
+            chatTitle ? `会话名=${chatTitle}` : '',
+            `发送者=${senderId}`,
+            `msgId=${message.id != null ? message.id : '-'}`,
+        ].filter(Boolean);
+
+        const line = `[${formatLogTime()}] [全量消息] ${parts.join(' ')} | ${preview}\n`;
+        try {
+            fs.appendFileSync(ALL_MESSAGES_LOG_FILE, line, 'utf8');
+        } catch {
+            // 调试日志写入失败不影响主流程
+        }
     }
 
     if (ENABLE_LOG_ALL_MESSAGES) {
         client.addEventHandler(
             async (event) => {
                 try {
-                    await logAllMessagesToTerminal(event);
+                    await logAllMessagesToFile(event);
                 } catch (e) {
-                    console.log(chalk.gray('全量消息调试输出失败:', (e && e.message) || e));
+                    console.log(chalk.gray('全量消息调试写入失败:', (e && e.message) || e));
                 }
             },
             new NewMessage({ incoming: true, outgoing: true }),
         );
-    }
-
-    /**
-     * Promise 超时：避免 Telegram sendFile / 某分支整链永久挂起，占满批量 APK 的并发槽导致整批停滞。
-     * 超时后 race 已结束，但底层 GramJS 请求可能仍在进行（无法强制中止），仅释放调度上的等待。
-     */
-    async function withTimeout(promise, ms, errLabel) {
-        const n = Number(ms);
-        if (!Number.isFinite(n) || n <= 0) {
-            return promise;
-        }
-        let timer;
-        const timeoutPromise = new Promise((_, reject) => {
-            timer = setTimeout(() => {
-                reject(new Error(`${errLabel || '操作'}超时（>${Math.round(n / 1000)}s）`));
-            }, n);
-        });
-        try {
-            return await Promise.race([promise, timeoutPromise]);
-        } finally {
-            if (timer) clearTimeout(timer);
-        }
     }
 
     /** 删除群内触发指令消息（需本账号有删消息权限；失败仅打日志，不阻断主流程） */
@@ -434,14 +473,14 @@ function isBranchAllowed(branchName) {
     }
 
     function isBuildAborted(abortToken) {
-        if (shouldCancelBuild) return true;
-        if (abortToken != null && abortToken !== buildAbortToken) return true;
+        if (state.shouldCancelBuild) return true;
+        if (abortToken != null && abortToken !== state.buildAbortToken) return true;
         return false;
     }
 
     function requestStopAllBuilds() {
-        buildAbortToken++;
-        shouldCancelBuild = true;
+        state.buildAbortToken++;
+        state.shouldCancelBuild = true;
     }
 
     const TELEGRAM_SEND_FILE_TIMEOUT_MS = parseInt(
@@ -472,6 +511,25 @@ function isBranchAllowed(branchName) {
      */
     const projectGitWorkChains = new Map();
 
+    /** 统一的 APK 分支去重键：项目名 + 分支名，均小写，跨「单分支队列」与「批量会话」共用 */
+    function apkReserveKey(projectName, branchName) {
+        return `${String(projectName || '').toLowerCase()}::${String(branchName || '').toLowerCase()}`;
+    }
+
+    /** 该分支是否已在「单分支 APK 队列」中（正在打 or 排队），供批量流程避免重复打包 */
+    function isApkBranchInSingleFlow(projectName, branchName) {
+        const key = apkReserveKey(projectName, branchName);
+        if (
+            state.isApkBuilding &&
+            apkReserveKey(state.currentApkBuildProjectName, state.currentApkBuildBranch) === key
+        ) {
+            return true;
+        }
+        return state.apkBuildQueue.some(
+            (t) => apkReserveKey(t.projectName, t.branchName) === key,
+        );
+    }
+
     async function enqueueProjectGitWork(projectName, taskFn) {
         const key = projectName || 'UNKNOWN';
         const prev = projectGitWorkChains.get(key) || Promise.resolve();
@@ -492,25 +550,25 @@ function isBranchAllowed(branchName) {
     /** 该项目仓库是否正被 zip 打包 / 排队占用（与穿透互斥） */
     function isProjectZipPackBusy(projectName) {
         if (!projectName) return false;
-        if (isBuilding && currentBuildProjectName === projectName) return true;
-        return buildQueue.some((t) => t.project && t.project.name === projectName);
+        if (state.isBuilding && state.currentBuildProjectName === projectName) return true;
+        return state.buildQueue.some((t) => t.project && t.project.name === projectName);
     }
 
     /** 穿透与打包/APK/压缩包检测共用同一 Git 工作区，同项目需互斥 */
     function isProjectGitWorkspaceBusy(projectName) {
         if (!projectName) return false;
         if (isProjectZipPackBusy(projectName)) return true;
-        if (isApkBuilding && currentApkBuildProjectName === projectName) return true;
-        if (apkBuildQueue.some((t) => t.projectName === projectName)) return true;
+        if (state.isApkBuilding && state.currentApkBuildProjectName === projectName) return true;
+        if (state.apkBuildQueue.some((t) => t.projectName === projectName)) return true;
         if (
-            isProcessingFile &&
-            currentFileProcessTask &&
-            currentFileProcessTask.project &&
-            currentFileProcessTask.project.name === projectName
+            state.isProcessingFile &&
+            state.currentFileProcessTask &&
+            state.currentFileProcessTask.project &&
+            state.currentFileProcessTask.project.name === projectName
         ) {
             return true;
         }
-        if (fileProcessQueue.some((t) => t.project && t.project.name === projectName)) {
+        if (state.fileProcessQueue.some((t) => t.project && t.project.name === projectName)) {
             return true;
         }
         return false;
@@ -532,12 +590,21 @@ function isBranchAllowed(branchName) {
      *  「构建中入队」会无人唤醒）
      */
     function scheduleNextQueuedFileAnalyze(delayMs = 1000) {
-        if (isProcessingFile || fileProcessQueue.length === 0) {
+        if (state.isProcessingFile || state.fileProcessQueue.length === 0) {
             return;
         }
-        const nextTask = fileProcessQueue.shift();
+        // 同步占位：取走任务的同时立刻把 isProcessingFile 置真，关闭「已 shift 但状态未置位」
+        // 的竞态窗口，避免多个驱动者（构建结束 / 上一文件结束 / 入队时）并发领走任务导致重复处理。
+        const nextTask = state.fileProcessQueue.shift();
+        state.isProcessingFile = true;
+        state.currentFileProcessTask = nextTask;
         const d = Number(delayMs);
         const wait = Number.isFinite(d) && d >= 0 ? d : 1000;
+        console.log(
+            chalk.cyan(
+                `\n📦 处理队列中的文件: ${nextTask.fileName} (剩余 ${state.fileProcessQueue.length}个)`,
+            ),
+        );
         setTimeout(() => {
             processFileTask(nextTask);
         }, wait);
@@ -605,13 +672,13 @@ function isBranchAllowed(branchName) {
         };
 
         if (shouldQueueFileAnalyzeForProject(resolved.project)) {
-            fileProcessQueue.push(fileTask);
+            state.fileProcessQueue.push(fileTask);
             console.log(
                 chalk.gray(
-                    `压缩包检测已排队: ${fileTask.fileName}（队列 ${fileProcessQueue.length}）`,
+                    `压缩包检测已排队: ${fileTask.fileName}（队列 ${state.fileProcessQueue.length}）`,
                 ),
             );
-            if (!isProcessingFile) {
+            if (!state.isProcessingFile) {
                 scheduleNextQueuedFileAnalyze(0);
             }
         } else {
@@ -624,69 +691,19 @@ function isBranchAllowed(branchName) {
      * 若另一仓库正在 zip 构建，则不同项目的检测可并行启动（由各自 Git 串行锁保证安全）。
      */
     function shouldQueueFileAnalyzeForProject(project) {
-        if (isProcessingFile) {
+        if (state.isProcessingFile) {
             return true;
         }
-        if (!isBuilding) {
+        if (!state.isBuilding) {
             return false;
         }
         const pName = project && project.name;
-        if (!pName || !currentBuildProjectName) {
+        if (!pName || !state.currentBuildProjectName) {
             return true;
         }
-        return pName === currentBuildProjectName;
+        return pName === state.currentBuildProjectName;
     }
 
-    /** 并发批量打包时合并对打包服务 /list 的并发请求（共用同一 in-flight Promise） */
-    let packServerListInflight = null;
-    async function fetchPackServerFileList() {
-        if (packServerListInflight) {
-            return packServerListInflight;
-        }
-        packServerListInflight = (async () => {
-            try {
-                const res = await axios.get('http://47.128.239.172:8000/list', {
-                    timeout: 10000,
-                    proxy: PACK_SERVER_PROXY,
-                });
-                const files = res.data && Array.isArray(res.data.files) ? res.data.files : [];
-                userBotLog.append('LIST', `OK files=${files.length}`);
-                return files;
-            } catch (error) {
-                const msg = (error && error.message) || String(error);
-                userBotLog.append('LIST', `FAIL ${msg}`);
-                throw error;
-            } finally {
-                packServerListInflight = null;
-            }
-        })();
-        return packServerListInflight;
-    }
-
-    function inferApkFailureStage(error) {
-        const m = (error && error.message) || String(error);
-        if (/S3|AWS|amazonaws|PutObject|上传到 S3|socket hang up|TimeoutError/i.test(m)) return '上传 S3';
-        if (/Telegram sendFile|Telegram sendMessage|Telegram 通知失败|整链超时/i.test(m)) return 'Telegram 发群';
-        if (/未找到已打包|打包结果|\/list|访问 \/list/i.test(m)) return '等待打包结果';
-        if (/下载 APK.*超时|下载.*超时/i.test(m)) return '下载 APK';
-        if (/下载 APK|download/i.test(m)) return '下载 APK';
-        if (/Logo|gulu_top/i.test(m)) return 'Logo 处理';
-        if (/切换分支|checkout|git/i.test(m)) return 'Git 分支';
-        return '';
-    }
-
-    function buildApkFailureTelegramMessage(projectName, branchName, error) {
-        const errorMsg = (error && error.message) || String(error);
-        const stage = inferApkFailureStage(error);
-        const stageLine = stage ? `🔧 环节: ${stage}\n` : '';
-        return (
-            `❌ APK 打包失败\n\n` +
-            stageLine +
-            `📁 项目: ${projectName}\n` +
-            `🌿 分支: ${branchName}\n` +
-            `📝 错误信息: ${errorMsg}`
-        );
-    }
 
     /**
      * 群内复刻台任务：第 1 条单行域名 → 群级 pending（持久化）；第 2 条复刻台+分包ID → 写入期望分包（可穿插他人消息，4h 内有效）
@@ -916,6 +933,46 @@ function isBranchAllowed(branchName) {
             const chatIdStr = message.chatId.toString();
             const cleanTextEarly = text.split('@')[0].trim();
 
+            // 私聊白名单触发打包：仅指定用户私聊发来的「打包 ...」会被处理，结果统一输出到目标群。
+            // 需在会话过滤闸门之前判断（私聊会话通常不在 CHAT_IDS 中）。排除「打包APK」避免误入 zip 流程。
+            const isDmPackTrigger =
+                Boolean(message.isPrivate) &&
+                !message.out &&
+                dmPackAllowedIds.size > 0 &&
+                dmPackAllowedIds.has(senderId) &&
+                text.startsWith('打包') &&
+                !text.startsWith('打包APK');
+
+            if (isDmPackTrigger) {
+                const dmTargetChatId = getDmPackTargetChatId();
+                if (!dmTargetChatId) {
+                    console.log(
+                        chalk.yellow(
+                            '私聊触发打包失败：未配置输出群（请设置 DM_PACK_TARGET_CHAT 或 CHAT_ID/CHAT_IDS）',
+                        ),
+                    );
+                    return;
+                }
+                const dmPackItems = parsePackCommand(text);
+                if (dmPackItems.length === 0) {
+                    console.log(chalk.yellow(`私聊打包未解析到有效分支（发送者 ${senderId}）`));
+                    return;
+                }
+                console.log(
+                    chalk.cyan(
+                        `📩 收到私聊打包（发送者 ${senderId}）→ 输出群 ${dmTargetChatId.toString()}，分支: ${dmPackItems
+                            .map((p) => p.branch)
+                            .join(', ')}`,
+                    ),
+                );
+                try {
+                    await runPackBuildTargets(dmPackItems, senderId, dmTargetChatId);
+                } catch (err) {
+                    console.error(chalk.red('私聊触发打包失败:'), err);
+                }
+                return;
+            }
+
             if (!shouldHandleUserbotMessage(message, allowedChatIds, selfUserId)) {
                 if (
                     cleanTextEarly.startsWith('/apk') ||
@@ -1074,19 +1131,19 @@ function isBranchAllowed(branchName) {
             if (cleanText === '/queue') {
                 let queueMessage = '📋 队列状态\n\n';
 
-                if (isBuilding) {
+                if (state.isBuilding) {
                     const who =
-                        currentBuildProjectName && currentBuildBranch
-                            ? `${currentBuildProjectName} / ${currentBuildBranch}`
-                            : currentBuildBranch || '…';
+                        state.currentBuildProjectName && state.currentBuildBranch
+                            ? `${state.currentBuildProjectName} / ${state.currentBuildBranch}`
+                            : state.currentBuildBranch || '…';
                     queueMessage += `🔄 ${who}\n\n`;
                 } else {
                     queueMessage += `✅ 空闲\n\n`;
                 }
 
-                if (buildQueue.length > 0) {
-                    queueMessage += `等待中 (${buildQueue.length}个):\n`;
-                    buildQueue.forEach((item, index) => {
+                if (state.buildQueue.length > 0) {
+                    queueMessage += `等待中 (${state.buildQueue.length}个):\n`;
+                    state.buildQueue.forEach((item, index) => {
                         const pname = item.project && item.project.name ? `${item.project.name} / ` : '';
                         queueMessage += `${index + 1}. ${pname}${item.branchName}\n`;
                     });
@@ -1318,8 +1375,8 @@ function isBranchAllowed(branchName) {
                             let busyHint = `${tunProject.name} 正在打包、APK 或配置检测`;
                             if (isProjectZipPackBusy(tunProject.name)) {
                                 const who =
-                                    isBuilding && currentBuildProjectName === tunProject.name
-                                        ? currentBuildBranch
+                                    state.isBuilding && state.currentBuildProjectName === tunProject.name
+                                        ? state.currentBuildBranch
                                         : null;
                                 busyHint = who
                                     ? `${tunProject.name} 正在打包 ${who}`
@@ -1518,187 +1575,9 @@ function isBranchAllowed(branchName) {
 
             await tryDeleteTriggerMessage(message, '打包');
 
-            shouldCancelBuild = false;
-            const packToken = buildAbortToken;
-            isPackPreparing = true;
-
-            // 验证分支是否存在（在 WG-WEB / WGAME-WEB 两个仓库中查找）
-            console.log(chalk.cyan(`\n🔍 验证分支是否存在...`));
-            const resolvedBuildTargets = [];
-            const invalidBuildBranches = [];
-
-            try {
-                await warmProjectBranchesCache();
-                for (const item of packItems) {
-                    if (isBuildAborted(packToken)) {
-                        console.log(chalk.yellow('打包已终止（验证分支期间）'));
-                        return;
-                    }
-                    const name = item.branch.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-                    try {
-                        const resolved = await resolveProjectAndBranch(name, {
-                            reuseBranchCache: true,
-                        });
-                        if (resolved) {
-                            resolvedBuildTargets.push({
-                                inputName: name,
-                                project: resolved.project,
-                                actualBranchName: resolved.actualBranchName,
-                                packageId:
-                                    item.packageId != null && Number.isFinite(item.packageId)
-                                        ? item.packageId
-                                        : null,
-                            });
-                        } else {
-                            invalidBuildBranches.push(name);
-                        }
-                    } catch (e) {
-                        console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
-                        invalidBuildBranches.push(name);
-                    }
-                }
-
-                if (isBuildAborted(packToken)) {
-                    console.log(chalk.yellow('打包已终止（验证分支完成后）'));
-                    return;
-                }
-
-                if (invalidBuildBranches.length > 0) {
-                    console.log(
-                        chalk.yellow(
-                            `⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`,
-                        ),
-                    );
-                }
-
-                if (resolvedBuildTargets.length === 0) {
-                    console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
-                    return;
-                }
-
-                const validBranches = resolvedBuildTargets.map(t => t.actualBranchName);
-                console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
-                console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
-
-                // 过滤掉已在队列中或正在打包的分支
-                const newTargets = [];
-                const duplicateBranches = [];
-
-                for (const target of resolvedBuildTargets) {
-                    const branchName = target.actualBranchName;
-                    const projectName =
-                        target.project && target.project.name ? target.project.name : '';
-
-                    if (isProjectTunnelActive(projectName)) {
-                        const tunBranch = getProjectTunnelBranch(projectName);
-                        duplicateBranches.push(
-                            `${branchName}（${projectName} 正在穿透 ${tunBranch || '?'}，请先等穿透结束）`,
-                        );
-                        continue;
-                    }
-
-                    // 检查是否正在打包
-                    if (isBuilding && currentBuildBranch === branchName) {
-                        duplicateBranches.push(`${branchName} (正在打包)`);
-                        continue;
-                    }
-
-                    // 检查是否已在队列中
-                    const inQueue = buildQueue.some(item => item.branchName === branchName);
-                    if (inQueue) {
-                        duplicateBranches.push(`${branchName} (已在队列)`);
-                        continue;
-                    }
-
-                    newTargets.push(target);
-                }
-
-                // 如果有重复的分支，发送提示
-                if (duplicateBranches.length > 0) {
-                    try {
-                        await client.sendMessage(message.chatId, {
-                            message: `⚠️ 以下分支已存在，已跳过:\n${duplicateBranches.join('\n')}`
-                        });
-                    } catch (error) {
-                        console.log(chalk.yellow('发送消息失败:', error.message));
-                    }
-                }
-
-                // 如果没有新分支需要处理，直接返回
-                if (newTargets.length === 0) {
-                    console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
-                    return;
-                }
-
-                if (isBuildAborted(packToken)) {
-                    console.log(chalk.yellow('打包已终止（启动构建前）'));
-                    return;
-                }
-
-                // 处理多个分支（只处理新的有效分支）
-                for (let i = 0; i < newTargets.length; i++) {
-                    if (isBuildAborted(packToken)) {
-                        console.log(chalk.yellow('打包已终止（启动构建前）'));
-                        return;
-                    }
-
-                    const { project, actualBranchName, packageId } = newTargets[i];
-                    const branchName = actualBranchName;
-                    const buildId = Date.now().toString() + '_' + i;
-
-                    if (isBuilding || (i > 0)) {
-                        buildQueue.push({
-                            buildId,
-                            branchName,
-                            project,
-                            packageId,
-                            userId: senderId,
-                            chatId: message.chatId,
-                            timestamp: new Date(),
-                            abortToken: packToken,
-                        });
-                        console.log(chalk.gray(`加入队列: ${branchName} (位置 ${buildQueue.length})`));
-                        continue;
-                    }
-
-                    // 设置打包状态
-                    isBuilding = true;
-                    currentBuildBranch = branchName;
-                    currentBuildProjectName = project.name;
-                    currentBuildId = buildId;
-
-                    console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
-                    console.log(chalk.gray(`触发用户: ${senderId}\n`));
-
-                    // 执行构建流程（异步，不等待）
-                    (async () => {
-                        try {
-                            await executeBuild(project, branchName, senderId, message.chatId, {
-                                packageId,
-                                abortToken: packToken,
-                            });
-                        } catch (error) {
-                            console.error(chalk.red('打包失败:'), error);
-                        }
-
-                        // 释放打包状态并处理下一个
-                        isBuilding = false;
-                        currentBuildBranch = '';
-                        currentBuildProjectName = '';
-                        currentBuildId = null;
-                        shouldCancelBuild = false;
-
-                        setTimeout(() => {
-                            processNextInQueue();
-                            scheduleNextQueuedFileAnalyze(1000);
-                        }, 2000);
-                    })();
-                }
-
-                return;
-            } finally {
-                isPackPreparing = false;
-            }
+            // 群内打包与「私聊白名单触发」共用同一核心流程，仅输出会话不同
+            await runPackBuildTargets(packItems, senderId, message.chatId);
+            return;
 
         } catch (error) {
             console.error(chalk.red('处理消息时出错:'), error);
@@ -1879,8 +1758,8 @@ function isBranchAllowed(branchName) {
         const { fileName, branchName, actualBranchName, project, chatId } = task;
 
         // 设置处理状态
-        isProcessingFile = true;
-        currentFileProcessTask = task;
+        state.isProcessingFile = true;
+        state.currentFileProcessTask = task;
 
         try {
             await enqueueProjectGitWork(project.name, async () => {
@@ -1894,7 +1773,7 @@ function isBranchAllowed(branchName) {
                         branchName,
                     });
                 } catch (error) {
-                    const msg = (error && error.message) || String(error);
+                    const msg = errMsg(error);
                     if (/Pull 多次失败/i.test(msg)) {
                         console.log(
                             chalk.red(
@@ -1917,141 +1796,33 @@ function isBranchAllowed(branchName) {
             });
         } finally {
             // 释放处理状态
-            isProcessingFile = false;
-            currentFileProcessTask = null;
+            state.isProcessingFile = false;
+            state.currentFileProcessTask = null;
 
-            // 处理队列中的下一个文件
-            if (fileProcessQueue.length > 0) {
-                const nextFileTask = fileProcessQueue.shift();
-                console.log(chalk.cyan(`\n📦 处理队列中的文件: ${nextFileTask.fileName} (剩余 ${fileProcessQueue.length}个)`));
-                setTimeout(() => {
-                    processFileTask(nextFileTask);
-                }, 1000); // 延迟1秒处理下一个，避免冲突
-            }
+            // 统一经由单一驱动入口领取下一个文件任务（原子占位，避免多驱动者竞态）
+            scheduleNextQueuedFileAnalyze(1000);
         }
-    }
-
-    // 上传本地文件到 S3
-    async function uploadFileToS3(
-        localFilePath,
-        key,
-        contentType = 'application/octet-stream',
-        uploadTimeoutMs = 60000,
-    ) {
-        if (!S3_BUCKET) {
-            userBotLog.append('S3', '未配置 S3_BUCKET');
-            console.log(chalk.red('❌ 未配置 S3_BUCKET，无法上传到 S3'));
-            throw new Error('S3_BUCKET 未配置');
-        }
-
-        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-            userBotLog.append('S3', '未配置 AWS 凭证');
-            console.log(chalk.red('❌ 未配置 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY，无法上传到 S3'));
-            throw new Error('AWS 凭证未配置');
-        }
-
-        const maxAttempts = 10;
-        const delayMs = 3000;
-        let lastError = null;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            userBotLog.append('S3', `尝试 ${attempt}/${maxAttempts} bucket=${S3_BUCKET} key=${key}`);
-
-            try {
-                const fileStream = fs.createReadStream(localFilePath);
-
-                const command = new PutObjectCommand({
-                    Bucket: S3_BUCKET,
-                    Key: key,
-                    Body: fileStream,
-                    ContentType: contentType,
-                });
-
-                // 为每次上传设置 60 秒超时，超时则主动中止本次请求并记为一次失败
-                const abortController = new AbortController();
-                const timeoutId = setTimeout(() => {
-                    abortController.abort();
-                }, uploadTimeoutMs);
-
-                try {
-                    await s3Client.send(command, { abortSignal: abortController.signal });
-                } finally {
-                    clearTimeout(timeoutId);
-                }
-
-                userBotLog.append('S3', `成功 key=${key}`);
-                console.log(chalk.green(`✅ 上传到 S3 成功: ${key}`));
-
-                const publicUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
-                return { key, url: publicUrl };
-            } catch (error) {
-                lastError = error;
-                const msg = (error && error.message) || '';
-                const code = (error && error.code) || (error && error.cause && error.cause.code) || '';
-
-                userBotLog.append('S3', `失败 ${attempt}/${maxAttempts} code=${code} msg=${msg}`);
-
-                const isAbortError =
-                    (error && error.name === 'AbortError') ||
-                    /Request aborted/i.test(msg);
-
-                const isAwsRequestTimeout =
-                    (error && (error.Code === 'RequestTimeout' || error.name === 'RequestTimeout')) ||
-                    /Your socket connection to the server was not read from or written to within the timeout period\. Idle connections will be closed\./i.test(msg);
-
-                const isInvalidHeaderValue =
-                    (error && error.code === 'ERR_HTTP_INVALID_HEADER_VALUE') ||
-                    /Invalid value "undefined" for header "x-amz-decoded-content-length"/i.test(msg);
-
-                const retryable =
-                    isAbortError ||
-                    isAwsRequestTimeout ||
-                    isInvalidHeaderValue ||
-                    /Client network socket disconnected before secure TLS connection was established/i.test(msg) ||
-                    code === 'ECONNRESET' ||
-                    code === 'ETIMEDOUT' ||
-                    code === 'EPIPE' ||
-                    code === 'EAI_AGAIN' ||
-                    /ECONNRESET/i.test(msg) ||
-                    /ETIMEDOUT/i.test(msg) ||
-                    /EAI_AGAIN/i.test(msg) ||
-                    /socket hang up/i.test(msg) ||
-                    /network error/i.test(msg) ||
-                    /non-retryable streaming request/i.test(msg);
-
-                if (!retryable || attempt === maxAttempts) {
-                    userBotLog.append('S3', `终止重试 retryable=${retryable} last=${msg}`);
-                    console.log(chalk.red(`❌ 上传到 S3 失败（已写日志）: ${key}`));
-                    break;
-                }
-
-                userBotLog.append('S3', `${delayMs / 1000}s 后重试`);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
-        }
-
-        throw lastError || new Error('上传到 S3 失败（未知错误）');
     }
 
     /** 该分支是否仍被 zip/APK/文件检测队列占用（避免 cleanup 删掉即将 checkout 的分支） */
     function isBranchReservedForProject(projectName, branch) {
         if (!projectName || !branch) return false;
         if (
-            isBuilding &&
-            currentBuildProjectName === projectName &&
-            gitBranchMatches(currentBuildBranch, branch)
+            state.isBuilding &&
+            state.currentBuildProjectName === projectName &&
+            gitBranchMatches(state.currentBuildBranch, branch)
         ) {
             return true;
         }
         if (
-            isApkBuilding &&
-            currentApkBuildProjectName === projectName &&
-            gitBranchMatches(currentApkBuildBranch, branch)
+            state.isApkBuilding &&
+            state.currentApkBuildProjectName === projectName &&
+            gitBranchMatches(state.currentApkBuildBranch, branch)
         ) {
             return true;
         }
         if (
-            buildQueue.some(
+            state.buildQueue.some(
                 (t) =>
                     t.project &&
                     t.project.name === projectName &&
@@ -2061,7 +1832,7 @@ function isBranchAllowed(branchName) {
             return true;
         }
         if (
-            apkBuildQueue.some(
+            state.apkBuildQueue.some(
                 (t) =>
                     t.projectName === projectName && gitBranchMatches(t.branchName, branch),
             )
@@ -2069,7 +1840,7 @@ function isBranchAllowed(branchName) {
             return true;
         }
         if (
-            fileProcessQueue.some(
+            state.fileProcessQueue.some(
                 (t) =>
                     t.project &&
                     t.project.name === projectName &&
@@ -2079,11 +1850,11 @@ function isBranchAllowed(branchName) {
             return true;
         }
         if (
-            currentFileProcessTask &&
-            currentFileProcessTask.project &&
-            currentFileProcessTask.project.name === projectName &&
+            state.currentFileProcessTask &&
+            state.currentFileProcessTask.project &&
+            state.currentFileProcessTask.project.name === projectName &&
             gitBranchMatches(
-                currentFileProcessTask.actualBranchName || currentFileProcessTask.branchName,
+                state.currentFileProcessTask.actualBranchName || state.currentFileProcessTask.branchName,
                 branch,
             )
         ) {
@@ -2101,21 +1872,21 @@ function isBranchAllowed(branchName) {
     function hasPendingWorkForProject(projectName) {
         if (!projectName) return false;
         if (isProjectTunnelActive(projectName)) return true;
-        if (isBuilding && currentBuildProjectName === projectName) return true;
-        if (isApkBuilding && currentApkBuildProjectName === projectName) return true;
-        if (isProcessingFile) {
+        if (state.isBuilding && state.currentBuildProjectName === projectName) return true;
+        if (state.isApkBuilding && state.currentApkBuildProjectName === projectName) return true;
+        if (state.isProcessingFile) {
             if (
-                currentFileProcessTask &&
-                currentFileProcessTask.project &&
-                currentFileProcessTask.project.name === projectName
+                state.currentFileProcessTask &&
+                state.currentFileProcessTask.project &&
+                state.currentFileProcessTask.project.name === projectName
             ) {
                 return true;
             }
-            const busy = fileProcessQueue.some((t) => t.project && t.project.name === projectName);
+            const busy = state.fileProcessQueue.some((t) => t.project && t.project.name === projectName);
             if (busy) return true;
         }
-        if (buildQueue.some((t) => t.project && t.project.name === projectName)) return true;
-        if (apkBuildQueue.some((t) => t.projectName === projectName)) return true;
+        if (state.buildQueue.some((t) => t.project && t.project.name === projectName)) return true;
+        if (state.apkBuildQueue.some((t) => t.projectName === projectName)) return true;
         return false;
     }
 
@@ -2174,12 +1945,12 @@ function isBranchAllowed(branchName) {
 
     async function cleanupAllProjectsWhenIdle() {
         if (
-            isBuilding ||
-            isApkBuilding ||
-            isProcessingFile ||
-            buildQueue.length > 0 ||
-            apkBuildQueue.length > 0 ||
-            fileProcessQueue.length > 0
+            state.isBuilding ||
+            state.isApkBuilding ||
+            state.isProcessingFile ||
+            state.buildQueue.length > 0 ||
+            state.apkBuildQueue.length > 0 ||
+            state.fileProcessQueue.length > 0
         ) {
             console.log(chalk.gray('跳过全局清理本地分支：仍有任务队列未清空'));
             return;
@@ -2311,7 +2082,7 @@ function isBranchAllowed(branchName) {
                             console.log(chalk.red(`❌ [${project.name}] 分支 ${actualBranchName} 未检测到 packageId 配置`));
                         }
                     } catch (error) {
-                        const msg = (error && error.message) || String(error);
+                        const msg = errMsg(error);
                         if (/Pull 多次失败/i.test(msg)) {
                             userBotLog.append(
                                 'DETECT',
@@ -2440,12 +2211,12 @@ function isBranchAllowed(branchName) {
     async function handleCancelBranch(branchName, senderId, chatId) {
         let removedFromQueue = 0;
 
-        if (isBuilding && currentBuildBranch === branchName) {
-            shouldCancelBuild = true;
+        if (state.isBuilding && state.currentBuildBranch === branchName) {
+            state.shouldCancelBuild = true;
             console.log(chalk.yellow(`打包已中断: ${branchName} (操作者: ${senderId})`));
         }
 
-        buildQueue = buildQueue.filter(task => {
+        state.buildQueue = state.buildQueue.filter(task => {
             if (task.branchName === branchName) {
                 removedFromQueue++;
                 return false;
@@ -2457,7 +2228,7 @@ function isBranchAllowed(branchName) {
             console.log(chalk.yellow(`从队列移除: ${branchName} (${removedFromQueue}个)`));
         }
 
-        if (!shouldCancelBuild && removedFromQueue === 0) {
+        if (!state.shouldCancelBuild && removedFromQueue === 0) {
             console.log(chalk.gray(`取消请求未找到对应任务: ${branchName}`));
         }
     }
@@ -2466,18 +2237,18 @@ function isBranchAllowed(branchName) {
     async function handleStopBuild(senderId, message) {
         await tryDeleteTriggerMessage(message, '终止打包');
 
-        const wasBuilding = isBuilding;
-        const wasPreparing = isPackPreparing;
-        const clearedQueue = buildQueue.length;
+        const wasBuilding = state.isBuilding;
+        const wasPreparing = state.isPackPreparing;
+        const clearedQueue = state.buildQueue.length;
 
         requestStopAllBuilds();
-        buildQueue = [];
+        state.buildQueue = [];
 
         if (wasBuilding) {
             const who =
-                currentBuildProjectName && currentBuildBranch
-                    ? `${currentBuildProjectName}/${currentBuildBranch}`
-                    : currentBuildBranch || '…';
+                state.currentBuildProjectName && state.currentBuildBranch
+                    ? `${state.currentBuildProjectName}/${state.currentBuildBranch}`
+                    : state.currentBuildBranch || '…';
             console.log(chalk.yellow(`终止打包: 正在中断 ${who} (操作者: ${senderId})`));
         }
         if (wasPreparing) {
@@ -2553,12 +2324,6 @@ function isBranchAllowed(branchName) {
         return r.success ? String(r.output || '').trim() : '';
     }
 
-    function gitBranchMatches(actual, expected) {
-        const a = (actual || '').trim().toLowerCase();
-        const e = (expected || '').trim().toLowerCase();
-        return Boolean(a && e && a === e);
-    }
-
     /** 压缩包配置检测：切分支 + pull，并在读取 config 前确认 HEAD 与目标一致 */
     async function ensureProjectOnBranchForAnalyze(project, targetBranch) {
         const target = (targetBranch || '').trim();
@@ -2618,31 +2383,6 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    /** 压缩包检测结果：主域名列表（与历史格式一致） */
-    function formatZipAnalyzeMainDomains(result) {
-        const mainDomains = Array.isArray(result.mainDomains) ? result.mainDomains : [];
-        const seen = new Set();
-        const uniqueMain = mainDomains
-            .map((d) => String(d).trim())
-            .filter(Boolean)
-            .filter((d) => {
-                const key = d.toLowerCase();
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-
-        if (uniqueMain.length === 0) {
-            return '';
-        }
-
-        let block = `\n\n🌐 主域名:\n`;
-        uniqueMain.forEach((d) => {
-            block += `- ${d}\n`;
-        });
-        return block;
-    }
-
     function sweepExpiredZipBuildBundles() {
         const now = Date.now();
         for (const [key, bundle] of pendingZipBuildBundles.entries()) {
@@ -2652,27 +2392,6 @@ function isBranchAllowed(branchName) {
                 console.log(chalk.gray(`已过期清理打包待发缓存: ${key}`));
             }
         }
-    }
-
-    function buildZipAnalyzeMessage(fileName, actualBranchName, project, result) {
-        const envText = result.debug !== undefined ? (result.debug ? '测试服' : '正式服') : '未知';
-        const debugFlagText = result.debug !== undefined ? String(result.debug) : '未检测到';
-        const appName = result.appName || '未检测到';
-
-        let msg =
-            `📦 ${fileName}\n` +
-            `📁 项目: ${project.name} | 分支: ${actualBranchName}\n` +
-            `📱 APK: ${appName}\n` +
-            `🆔 Package: ${result.packageId}\n` +
-            `🎮 环境: ${envText} (debug=${debugFlagText})`;
-
-        if (result.debug !== false) {
-            msg +=
-                `\n\n⚠️ 警告：debug 不为 false（当前：${debugFlagText}），非正式服或未检测到，请确认环境与分包是否正确。`;
-        }
-
-        msg += formatZipAnalyzeMainDomains(result);
-        return msg.trimEnd();
     }
 
     /** 在 Git 锁内读取 config，生成检测文案（不发送） */
@@ -3027,11 +2746,11 @@ function isBranchAllowed(branchName) {
         // 使用实际分支名进行去重判断
         // 如果当前正在打包同一项目同一分支，直接提示并返回
         if (
-            isApkBuilding &&
-            currentApkBuildProjectName === displayProject &&
-            currentApkBuildBranch === resolvedActualBranch &&
-            currentApkBuildChatId &&
-            String(currentApkBuildChatId) === String(chatId)
+            state.isApkBuilding &&
+            state.currentApkBuildProjectName === displayProject &&
+            state.currentApkBuildBranch === resolvedActualBranch &&
+            state.currentApkBuildChatId &&
+            String(state.currentApkBuildChatId) === String(chatId)
         ) {
             try {
                 await client.sendMessage(chatId, {
@@ -3047,7 +2766,7 @@ function isBranchAllowed(branchName) {
         }
 
         // 检查是否已在 APK 队列中（同一 chatId + 项目 + 分支）
-        const existingIndex = apkBuildQueue.findIndex(task =>
+        const existingIndex = state.apkBuildQueue.findIndex(task =>
             task.projectName === displayProject &&
             task.branchName === resolvedActualBranch &&
             String(task.chatId) === String(chatId)
@@ -3066,8 +2785,23 @@ function isBranchAllowed(branchName) {
             return;
         }
 
+        // 跨流程去重：若该分支已被「批量 APK 会话」占用（在跑或排队），避免单分支再打一次
+        if (state.apkBatchReserved.has(apkReserveKey(displayProject, resolvedActualBranch))) {
+            try {
+                await client.sendMessage(chatId, {
+                    message:
+                        `⚠️ 分支已在批量打包队列中，无需重复打包\n\n` +
+                        `📦 项目：${displayProject}\n` +
+                        `🌿 分支：${displayBranch}`,
+                });
+            } catch (e) {
+                console.log(chalk.yellow('发送“分支已在批量队列中”提示失败:', e.message));
+            }
+            return;
+        }
+
         // 入队（使用解析后的实际分支名 + 项目信息）
-        apkBuildQueue.push({
+        state.apkBuildQueue.push({
             branchName: resolvedActualBranch,
             displayBranch,
             chatId,
@@ -3077,22 +2811,22 @@ function isBranchAllowed(branchName) {
 
         console.log(chalk.cyan(`📋 APK 打包加入队列: [${displayProject}] ${displayBranch}`));
 
-        if (!isApkBuilding) {
+        if (!state.isApkBuilding) {
             processNextApkInQueue();
         }
     }
 
     async function processNextApkInQueue() {
-        if (apkBuildQueue.length === 0) {
+        if (state.apkBuildQueue.length === 0) {
             return;
         }
-        const task = apkBuildQueue.shift();
-        isApkBuilding = true;
-        currentApkBuildBranch = task.branchName;
-        currentApkBuildProjectName = task.projectName || '未知项目';
-        currentApkBuildChatId = task.chatId;
+        const task = state.apkBuildQueue.shift();
+        state.isApkBuilding = true;
+        state.currentApkBuildBranch = task.branchName;
+        state.currentApkBuildProjectName = task.projectName || '未知项目';
+        state.currentApkBuildChatId = task.chatId;
 
-        console.log(chalk.cyan(`\n📋 处理 APK 队列任务: [${currentApkBuildProjectName}] ${task.branchName} (剩余 ${apkBuildQueue.length} 个)`));
+        console.log(chalk.cyan(`\n📋 处理 APK 队列任务: [${state.currentApkBuildProjectName}] ${task.branchName} (剩余 ${state.apkBuildQueue.length} 个)`));
 
         try {
             await triggerApkBuildForBranch(task.branchName, task.chatId, null, {
@@ -3102,10 +2836,10 @@ function isBranchAllowed(branchName) {
             userBotLog.append('QUEUE', `APK 队列任务失败: ${(error && error.message) || error}`);
             console.log(chalk.red('❌ APK 队列任务失败（详情见日志）'));
         } finally {
-            isApkBuilding = false;
-            currentApkBuildBranch = '';
-            currentApkBuildProjectName = '';
-            currentApkBuildChatId = null;
+            state.isApkBuilding = false;
+            state.currentApkBuildBranch = '';
+            state.currentApkBuildProjectName = '';
+            state.currentApkBuildChatId = null;
 
             setTimeout(() => processNextApkInQueue(), 2000);
         }
@@ -3151,113 +2885,6 @@ function isBranchAllowed(branchName) {
     }
 
     // 调用外部打包接口，触发 APK 构建
-    async function callPackApi(appNameSlug, webUrl, imageUrl) {
-        const slugForPack = (appNameSlug || '').toLowerCase();
-
-        const payload = [
-            {
-                app_name: slugForPack || appNameSlug,
-                web_url: webUrl,
-                image_url: imageUrl,
-            },
-        ];
-
-        console.log(chalk.cyan(`📦 调用打包接口: app_name=${slugForPack || appNameSlug}, web_url=${webUrl}, image_url=${imageUrl}`));
-
-        const maxAttempts = 3;
-        const retryDelayMs = 5000;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                await axios.post('http://47.128.239.172:8000/pack', payload, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent':
-                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-                        'Accept': '*/*',
-                        'Accept-Language': 'zh-CN,zh;q=0.9',
-                        'Connection': 'keep-alive',
-                    },
-                    timeout: 60000, // 不动原有超时时间
-                    proxy: PACK_SERVER_PROXY,
-                });
-
-                console.log(chalk.green('✅ 打包接口触发成功'));
-                return;
-            } catch (error) {
-                userBotLog.append('PACK', `调用 /pack 失败 ${attempt}/${maxAttempts}: ${error.message}`);
-                console.log(chalk.yellow(`⚠ 调用打包接口失败（第 ${attempt}/${maxAttempts} 次）：${error.message}`));
-                if (attempt === maxAttempts) {
-                    // 如果是 socket hang up / 连接被重置，视为触发成功但对方主动断开，继续后续轮询流程
-                    const msg = (error && error.message) || '';
-                    if (error && (error.code === 'ECONNRESET' || /socket hang up/i.test(msg))) {
-                        console.log(chalk.yellow('⚠ 打包接口连接被对方关闭（socket hang up），将继续轮询 /list 检查打包结果'));
-                        return;
-                    }
-                    throw error;
-                }
-                await new Promise(r => setTimeout(r, retryDelayMs));
-            }
-        }
-    }
-
-    // 带重试的文件下载（用于从打包服务器下载 APK）
-    async function downloadFileWithRetry(url, localPath, maxAttempts = 12, timeoutMs = 15000) {
-        const retryDelayMs = 5000;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            userBotLog.append('DOWNLOAD', `APK 下载 ${attempt}/${maxAttempts} ${url}`);
-
-            try {
-                // 每次下载尝试设置 15 秒超时，超时会主动中止请求并记为一次失败
-                const response = await axios.get(url, {
-                    responseType: 'stream',
-                    timeout: timeoutMs,
-                    proxy: PACK_SERVER_PROXY,
-                });
-
-                await new Promise((resolve, reject) => {
-                    try {
-                        if (fs.existsSync(localPath)) {
-                            fs.unlinkSync(localPath);
-                        }
-                    } catch {
-                        // 忽略，交给后续写入阶段处理
-                    }
-                    const writer = fs.createWriteStream(localPath);
-                    response.data.pipe(writer);
-                    writer.on('finish', resolve);
-                    writer.on('error', reject);
-                });
-
-                userBotLog.append('DOWNLOAD', `完成 ${localPath}`);
-                console.log(chalk.green(`📦 APK 下载完成`));
-                return;
-            } catch (error) {
-                const msg = (error && error.message) || '';
-                const code = error && error.code;
-
-                userBotLog.append('DOWNLOAD', `失败 ${attempt}/${maxAttempts} ${msg}`);
-
-                const isRetryable =
-                    code === 'ECONNRESET' ||
-                    code === 'ETIMEDOUT' ||
-                    code === 'EPERM' ||
-                    code === 'EACCES' ||
-                    code === 'EBUSY' ||
-                    /socket hang up/i.test(msg) ||
-                    /timeout/i.test(msg) ||
-                    /operation not permitted/i.test(msg);
-
-                if (!isRetryable || attempt === maxAttempts) {
-                    throw error;
-                }
-
-                await new Promise(r => setTimeout(r, retryDelayMs));
-            }
-        }
-    }
-
     // 轮询外部接口，等待对应 APK 打包完成
     // 为了减轻打包服务压力，默认每 3 分钟查询一次 /list，最多查询 10 次（约 30 分钟）
     async function waitForPackedApk(appNameSlug, triggerTimeMs, maxAttempts = 10, intervalMs = 180000, chatId, statusMsgId, branchName) {
@@ -3325,15 +2952,6 @@ function isBranchAllowed(branchName) {
         }
 
         throw new Error(`在 ${maxAttempts} 次轮询内未找到已打包 APK（app-${slugForPack}.apk）`);
-    }
-
-    function tryUnlinkIfExists(filePath) {
-        if (!filePath || typeof filePath !== 'string') return;
-        try {
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        } catch {
-            // ignore
-        }
     }
 
     // 预处理：为某个分支准备 APK 打包所需的上下文（切分支、拉代码、读配置、上传 Logo）
@@ -3673,9 +3291,9 @@ function isBranchAllowed(branchName) {
                 console.log(chalk.yellow('写入 apk-built-history 失败（可忽略）:', histErr.message));
             }
         } catch (e) {
-            const errMsg = (e && e.message) || String(e);
-            console.log(chalk.yellow('发送 APK 结果消息失败:', errMsg));
-            userBotLog.append('APK', `Telegram 通知失败 ${branchName}: ${errMsg}`);
+            const msg = errMsg(e);
+            console.log(chalk.yellow('发送 APK 结果消息失败:', msg));
+            userBotLog.append('APK', `Telegram 通知失败 ${branchName}: ${msg}`);
             throw e;
         } finally {
             try {
@@ -3778,47 +3396,6 @@ function isBranchAllowed(branchName) {
         }
     }
 
-    function buildApkBatchSummaryText(orderedBranches, outcomes, invalidBranches = []) {
-        const successList = orderedBranches.filter(b => outcomes.get(b) === 'success');
-        const skippedList = orderedBranches.filter(b => outcomes.get(b) === 'skipped');
-        const failureFromBuild = orderedBranches.filter(
-            b => outcomes.get(b) !== 'success' && outcomes.get(b) !== 'skipped',
-        );
-        const notFoundList = Array.isArray(invalidBranches)
-            ? invalidBranches.map((b) => String(b).trim()).filter(Boolean)
-            : [];
-        const failureItems = [
-            ...failureFromBuild.map((b) => ({ label: b, suffix: '' })),
-            ...notFoundList.map((b) => ({
-                label: b,
-                suffix: '（仓库中不存在，已跳过）',
-            })),
-        ];
-
-        const successCount = successList.length;
-        const failureCount = failureItems.length;
-        const skippedCount = skippedList.length;
-
-        let summaryMsg = `📊 APK 批量打包统计\n\n✅ 成功 ${successCount} 条`;
-        if (successList.length) {
-            summaryMsg += '\n' + successList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-        }
-        summaryMsg += `\n\n⏭️ 跳过（曾成功打包） ${skippedCount} 条`;
-        if (skippedList.length) {
-            summaryMsg += '\n' + skippedList.map((b, i) => `${i + 1}. ${b}`).join('\n');
-        }
-        summaryMsg += `\n\n❌ 失败 ${failureCount} 条`;
-        if (failureItems.length) {
-            summaryMsg +=
-                '\n' +
-                failureItems.map((item, i) => `${i + 1}. ${item.label}${item.suffix}`).join('\n');
-        }
-        if (failureFromBuild.length >= 3) {
-            summaryMsg += '\n\n⚠️ 疑似打包服务异常，请检查服务器状态';
-        }
-        return summaryMsg;
-    }
-
     /** 批量 APK 结束后从 apk-pending 移除本批全部分支（成功/失败/未找到均清除） */
     function clearApkPendingBranchesAfterBatch(branchNames) {
         const seen = new Set();
@@ -3846,7 +3423,7 @@ function isBranchAllowed(branchName) {
     }
 
     async function refreshApkBatchSummaryIfBranchRecovered(chatId, branchName) {
-        const ref = apkBatchEditableSummaryRef;
+        const ref = state.apkBatchEditableSummaryRef;
         if (!ref || ref.messageId == null || branchName == null || chatId == null) {
             return;
         }
@@ -3890,13 +3467,15 @@ function isBranchAllowed(branchName) {
         const orderedBranches = [];
         const sessionInvalidBranches = [];
         const sessionInputBranchNames = [];
+        // 本会话占用的批量预留键，finally 中统一从 state.apkBatchReserved 清理
+        const sessionReservedKeys = new Set();
         let sessionChatId = null;
 
         try {
-            while (apkBatchChunkQueue.length > 0) {
+            while (state.apkBatchChunkQueue.length > 0) {
                 const chunks = [];
-                while (apkBatchChunkQueue.length > 0) {
-                    chunks.push(apkBatchChunkQueue.shift());
+                while (state.apkBatchChunkQueue.length > 0) {
+                    chunks.push(state.apkBatchChunkQueue.shift());
                 }
 
                 const newTargets = [];
@@ -3933,6 +3512,8 @@ function isBranchAllowed(branchName) {
                     }
                     for (const t of chunk.resolvedTargets) {
                         const bn = t.branchName;
+                        const pName = t.project && t.project.name ? t.project.name : '';
+                        sessionReservedKeys.add(apkReserveKey(pName, bn));
                         if (!orderedBranches.includes(bn)) {
                             orderedBranches.push(bn);
                             newTargets.push(t);
@@ -4073,7 +3654,7 @@ function isBranchAllowed(branchName) {
                 sessionInvalidBranches,
             );
 
-            apkBatchEditableSummaryRef = {
+            state.apkBatchEditableSummaryRef = {
                 chatId: sessionChatId,
                 messageId: null,
                 orderedBranches: orderedBranches.slice(),
@@ -4088,21 +3669,25 @@ function isBranchAllowed(branchName) {
                     'Telegram sendMessage(批量汇总)',
                 );
                 if (
-                    apkBatchEditableSummaryRef &&
+                    state.apkBatchEditableSummaryRef &&
                     sent &&
                     sent.id != null &&
-                    String(apkBatchEditableSummaryRef.chatId) === String(sessionChatId)
+                    String(state.apkBatchEditableSummaryRef.chatId) === String(sessionChatId)
                 ) {
-                    apkBatchEditableSummaryRef.messageId = sent.id;
+                    state.apkBatchEditableSummaryRef.messageId = sent.id;
                 }
             } catch (e) {
-                apkBatchEditableSummaryRef = null;
+                state.apkBatchEditableSummaryRef = null;
                 console.log(chalk.yellow('发送批量汇总统计失败:', e.message || e));
             }
 
             clearApkPendingBranchesAfterBatch(sessionInputBranchNames);
         } finally {
-            apkBatchWorkerPromise = null;
+            // 释放本会话占用的批量预留键，恢复与单分支队列的去重基线
+            for (const key of sessionReservedKeys) {
+                state.apkBatchReserved.delete(key);
+            }
+            state.apkBatchWorkerPromise = null;
         }
     }
 
@@ -4118,7 +3703,32 @@ function isBranchAllowed(branchName) {
             );
         }
 
-        if (resolvedTargets.length === 0) {
+        // 跨流程去重：若分支已在「单分支 APK 队列」中（正在打 or 排队），批量这里跳过，交由单分支流程完成
+        const filteredTargets = [];
+        const skippedSingleFlow = [];
+        for (const t of resolvedTargets) {
+            const pName = t.project && t.project.name ? t.project.name : '';
+            if (isApkBranchInSingleFlow(pName, t.branchName)) {
+                skippedSingleFlow.push(t.branchName);
+                continue;
+            }
+            filteredTargets.push(t);
+        }
+        if (skippedSingleFlow.length > 0) {
+            console.log(
+                chalk.yellow(
+                    `⚠ 以下分支已在单分支 APK 队列/打包中，批量将跳过（不重复打包）: ${skippedSingleFlow.join(', ')}`,
+                ),
+            );
+        }
+
+        // 全部都被单分支流程占用：直接交给单分支流程完成，避免重复打包与重复汇总
+        if (filteredTargets.length === 0 && resolvedTargets.length > 0) {
+            console.log(chalk.yellow('本次批量分支均已在单分支 APK 队列中，跳过批量流程'));
+            return;
+        }
+
+        if (filteredTargets.length === 0) {
             console.log(chalk.red('❌ 批量打包中没有任何有效分支，仅发汇总'));
             const summaryMsg = buildApkBatchSummaryText([], new Map(), invalidBranches);
             try {
@@ -4138,8 +3748,14 @@ function isBranchAllowed(branchName) {
             );
         }
 
-        apkBatchChunkQueue.push({
-            resolvedTargets,
+        // 登记批量预留键：与单分支队列互相去重（worker 结束时统一清理）
+        for (const t of filteredTargets) {
+            const pName = t.project && t.project.name ? t.project.name : '';
+            state.apkBatchReserved.add(apkReserveKey(pName, t.branchName));
+        }
+
+        state.apkBatchChunkQueue.push({
+            resolvedTargets: filteredTargets,
             chatId,
             applyApkBuiltDedup,
             invalidBranches: invalidBranches.slice(),
@@ -4148,8 +3764,8 @@ function isBranchAllowed(branchName) {
                 .filter(Boolean),
         });
 
-        if (!apkBatchWorkerPromise) {
-            apkBatchWorkerPromise = runApkBatchWorkerLoop().catch((err) => {
+        if (!state.apkBatchWorkerPromise) {
+            state.apkBatchWorkerPromise = runApkBatchWorkerLoop().catch((err) => {
                 console.error(chalk.red('批量 APK worker 异常:'), err);
             });
         }
@@ -4380,7 +3996,7 @@ function isBranchAllowed(branchName) {
     // 执行构建流程（可复用函数，使用指定 project 的 builder）
     async function executeBuild(project, branchName, senderId, chatId, buildOptions = {}) {
         const abortToken =
-            buildOptions.abortToken != null ? buildOptions.abortToken : buildAbortToken;
+            buildOptions.abortToken != null ? buildOptions.abortToken : state.buildAbortToken;
         const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
 
         if (isBuildAborted(abortToken)) {
@@ -4400,7 +4016,7 @@ function isBranchAllowed(branchName) {
             return { cancelled: false };
         }
 
-        shouldCancelBuild = false;
+        state.shouldCancelBuild = false;
         const buildRunner = project && project.builder ? project.builder : builder;
         const packageIdTarget =
             buildOptions.packageId != null && Number.isFinite(buildOptions.packageId)
@@ -4480,37 +4096,234 @@ function isBranchAllowed(branchName) {
         return { cancelled: false };
     }
 
-    // 处理队列中的下一个任务
-    async function processNextInQueue() {
-        if (buildQueue.length === 0) {
-            // 👉 如果没有待构建任务了，但有待检测的文件，并且当前没在处理文件，
-            //    这里可以顺带启动一下文件检测队列
-            if (!isProcessingFile && fileProcessQueue.length > 0) {
-                const nextFileTask = fileProcessQueue.shift();
-                console.log(
-                    chalk.cyan(`\n📦 处理队列中的文件: ${nextFileTask.fileName} (剩余 ${fileProcessQueue.length}个)`)
-                );
-                setTimeout(() => {
-                    processFileTask(nextFileTask);
-                }, 1000);
+    /**
+     * 「打包」核心流程：解析后的 packItems → 校验/解析分支 → 去重 → 入队/执行构建。
+     * 群内命令与「私聊白名单触发」共用，差异仅在结果输出会话 outputChatId。
+     * @param {{branch:string, packageId:number|null}[]} packItems
+     * @param {string} senderId
+     * @param {bigint|string|number} outputChatId 构建结果与提示发送到的会话
+     */
+    async function runPackBuildTargets(packItems, senderId, outputChatId) {
+        // 防御性清洗 + 校验分支名格式（非法的跳过，不中断其余分支）
+        const cleanedItems = [];
+        const invalidFormatBranches = [];
+        for (const item of packItems) {
+            const branch = String(item.branch || '')
+                .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '')
+                .trim();
+            if (!branch) continue;
+            if (branch.length > 100) {
+                invalidFormatBranches.push(`${branch} (太长)`);
+                continue;
             }
+            if (!/^[a-zA-Z0-9\-_\/\.]+$/.test(branch)) {
+                invalidFormatBranches.push(`${branch} (非法字符)`);
+                continue;
+            }
+            cleanedItems.push({ branch, packageId: item.packageId });
+        }
+        if (invalidFormatBranches.length > 0) {
+            console.log(chalk.red(`分支名格式错误（已跳过）: ${invalidFormatBranches.join(', ')}`));
+        }
+        if (cleanedItems.length === 0) {
+            console.log(chalk.yellow('无有效分支可打包'));
             return;
         }
 
-        const nextTask = buildQueue.shift();
+        state.shouldCancelBuild = false;
+        const packToken = state.buildAbortToken;
+        state.isPackPreparing = true;
+
+        try {
+            console.log(chalk.cyan(`\n🔍 验证分支是否存在...`));
+            const resolvedBuildTargets = [];
+            const invalidBuildBranches = [];
+
+            await warmProjectBranchesCache();
+            for (const item of cleanedItems) {
+                if (isBuildAborted(packToken)) {
+                    console.log(chalk.yellow('打包已终止（验证分支期间）'));
+                    return;
+                }
+                const name = item.branch;
+                try {
+                    const resolved = await resolveProjectAndBranch(name, {
+                        reuseBranchCache: true,
+                    });
+                    if (resolved) {
+                        resolvedBuildTargets.push({
+                            inputName: name,
+                            project: resolved.project,
+                            actualBranchName: resolved.actualBranchName,
+                            packageId:
+                                item.packageId != null && Number.isFinite(item.packageId)
+                                    ? item.packageId
+                                    : null,
+                        });
+                    } else {
+                        invalidBuildBranches.push(name);
+                    }
+                } catch (e) {
+                    console.log(chalk.yellow(`在所有项目中验证分支 ${name} 失败: ${e.message}`));
+                    invalidBuildBranches.push(name);
+                }
+            }
+
+            if (isBuildAborted(packToken)) {
+                console.log(chalk.yellow('打包已终止（验证分支完成后）'));
+                return;
+            }
+
+            if (invalidBuildBranches.length > 0) {
+                console.log(
+                    chalk.yellow(
+                        `⚠ 以下分支在两个仓库中都不存在，将跳过: ${invalidBuildBranches.join(', ')}`,
+                    ),
+                );
+            }
+
+            if (resolvedBuildTargets.length === 0) {
+                console.log(chalk.red(`❌ 所有分支都不存在，取消打包`));
+                return;
+            }
+
+            const validBranches = resolvedBuildTargets.map((t) => t.actualBranchName);
+            console.log(chalk.green(`✓ 有效分支: ${validBranches.join(', ')}`));
+            console.log(chalk.cyan(`输入 有效分支: ${validBranches.join(', ')} 打包中...`));
+
+            // 过滤掉已在队列中或正在打包的分支
+            const newTargets = [];
+            const duplicateBranches = [];
+
+            for (const target of resolvedBuildTargets) {
+                const branchName = target.actualBranchName;
+                const projectName =
+                    target.project && target.project.name ? target.project.name : '';
+
+                if (isProjectTunnelActive(projectName)) {
+                    const tunBranch = getProjectTunnelBranch(projectName);
+                    duplicateBranches.push(
+                        `${branchName}（${projectName} 正在穿透 ${tunBranch || '?'}，请先等穿透结束）`,
+                    );
+                    continue;
+                }
+
+                if (state.isBuilding && state.currentBuildBranch === branchName) {
+                    duplicateBranches.push(`${branchName} (正在打包)`);
+                    continue;
+                }
+
+                const inQueue = state.buildQueue.some((it) => it.branchName === branchName);
+                if (inQueue) {
+                    duplicateBranches.push(`${branchName} (已在队列)`);
+                    continue;
+                }
+
+                newTargets.push(target);
+            }
+
+            if (duplicateBranches.length > 0) {
+                try {
+                    await client.sendMessage(outputChatId, {
+                        message: `⚠️ 以下分支已存在，已跳过:\n${duplicateBranches.join('\n')}`,
+                    });
+                } catch (error) {
+                    console.log(chalk.yellow('发送消息失败:', error.message));
+                }
+            }
+
+            if (newTargets.length === 0) {
+                console.log(chalk.yellow('所有分支都已存在，无需重复添加'));
+                return;
+            }
+
+            if (isBuildAborted(packToken)) {
+                console.log(chalk.yellow('打包已终止（启动构建前）'));
+                return;
+            }
+
+            for (let i = 0; i < newTargets.length; i++) {
+                if (isBuildAborted(packToken)) {
+                    console.log(chalk.yellow('打包已终止（启动构建前）'));
+                    return;
+                }
+
+                const { project, actualBranchName, packageId } = newTargets[i];
+                const branchName = actualBranchName;
+                const buildId = Date.now().toString() + '_' + i;
+
+                if (state.isBuilding || i > 0) {
+                    state.buildQueue.push({
+                        buildId,
+                        branchName,
+                        project,
+                        packageId,
+                        userId: senderId,
+                        chatId: outputChatId,
+                        timestamp: new Date(),
+                        abortToken: packToken,
+                    });
+                    console.log(chalk.gray(`加入队列: ${branchName} (位置 ${state.buildQueue.length})`));
+                    continue;
+                }
+
+                state.isBuilding = true;
+                state.currentBuildBranch = branchName;
+                state.currentBuildProjectName = project.name;
+                state.currentBuildId = buildId;
+
+                console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
+                console.log(chalk.gray(`触发用户: ${senderId}\n`));
+
+                (async () => {
+                    try {
+                        await executeBuild(project, branchName, senderId, outputChatId, {
+                            packageId,
+                            abortToken: packToken,
+                        });
+                    } catch (error) {
+                        console.error(chalk.red('打包失败:'), error);
+                    }
+
+                    state.isBuilding = false;
+                    state.currentBuildBranch = '';
+                    state.currentBuildProjectName = '';
+                    state.currentBuildId = null;
+                    state.shouldCancelBuild = false;
+
+                    setTimeout(() => {
+                        processNextInQueue();
+                        scheduleNextQueuedFileAnalyze(1000);
+                    }, 2000);
+                })();
+            }
+        } finally {
+            state.isPackPreparing = false;
+        }
+    }
+
+    // 处理队列中的下一个任务
+    async function processNextInQueue() {
+        if (state.buildQueue.length === 0) {
+            // 没有待构建任务，但可能有待检测文件 → 交给单一驱动入口（原子占位，避免竞态）
+            scheduleNextQueuedFileAnalyze(1000);
+            return;
+        }
+
+        const nextTask = state.buildQueue.shift();
         if (isBuildAborted(nextTask.abortToken)) {
             console.log(chalk.yellow(`跳过已终止的队列任务: ${nextTask.branchName}`));
             setTimeout(() => processNextInQueue(), 200);
             return;
         }
 
-        console.log(chalk.cyan(`\n📋 处理队列任务: ${nextTask.branchName} (剩余 ${buildQueue.length}个)`));
+        console.log(chalk.cyan(`\n📋 处理队列任务: ${nextTask.branchName} (剩余 ${state.buildQueue.length}个)`));
 
         // 设置当前构建
-        isBuilding = true;
-        currentBuildBranch = nextTask.branchName;
-        currentBuildProjectName = nextTask.project && nextTask.project.name ? nextTask.project.name : '';
-        currentBuildId = nextTask.buildId;
+        state.isBuilding = true;
+        state.currentBuildBranch = nextTask.branchName;
+        state.currentBuildProjectName = nextTask.project && nextTask.project.name ? nextTask.project.name : '';
+        state.currentBuildId = nextTask.buildId;
 
         // 开始构建流程（不单独发消息，直接开始）
         try {
@@ -4523,22 +4336,14 @@ function isBranchAllowed(branchName) {
         }
 
         // 重置状态
-        isBuilding = false;
-        currentBuildBranch = '';
-        currentBuildProjectName = '';
-        currentBuildId = null;
-        shouldCancelBuild = false;
+        state.isBuilding = false;
+        state.currentBuildBranch = '';
+        state.currentBuildProjectName = '';
+        state.currentBuildId = null;
+        state.shouldCancelBuild = false;
 
-        // 👉 构建刚结束时，如果有待检测文件且当前没在处理文件，也可以启动文件队列
-        if (!isProcessingFile && fileProcessQueue.length > 0) {
-            const nextFileTask = fileProcessQueue.shift();
-            console.log(
-                chalk.cyan(`\n📦 处理队列中的文件: ${nextFileTask.fileName} (剩余 ${fileProcessQueue.length}个)`)
-            );
-            setTimeout(() => {
-                processFileTask(nextFileTask);
-            }, 1000);
-        }
+        // 构建刚结束，顺带通过单一驱动入口启动文件检测队列
+        scheduleNextQueuedFileAnalyze(1000);
 
         // 继续处理下一个构建任务
         setTimeout(() => {

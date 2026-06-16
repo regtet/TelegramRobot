@@ -1,23 +1,15 @@
-const fs = require('fs');
-const path = require('path');
 const { normalizeForMatch, MIN_TOKEN_LEN } = require('./branch-group-auto-parse');
+const { readJson, writeJsonAtomic } = require('../core/json-store');
 
 const { branchPackageExpectFile: DATA_FILE } = require('../paths');
 
 function readDb() {
-    try {
-        if (!fs.existsSync(DATA_FILE)) return {};
-        const raw = fs.readFileSync(DATA_FILE, 'utf8').trim();
-        if (!raw) return {};
-        const data = JSON.parse(raw);
-        return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-    } catch {
-        return {};
-    }
+    const data = readJson(DATA_FILE, {});
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 }
 
 function writeDb(data) {
-    fs.writeFileSync(DATA_FILE, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    writeJsonAtomic(DATA_FILE, data);
 }
 
 function normalizeBranchKey(branch) {
@@ -49,7 +41,7 @@ function setFromAnnounce(branch, { packageId, series } = {}) {
         packageId: String(packageId).trim(),
         series: series != null ? String(series) : prev.series || null,
         branchNameHint: prev.branchNameHint || key,
-        matchTokens: uniqueTokens([...(prev.matchTokens || []), key, ...(prev.matchTokens || [])]),
+        matchTokens: uniqueTokens([...(prev.matchTokens || []), key]),
         domains: prev.domains || [],
         updatedAt: new Date().toISOString(),
         source: 'group_announce',
