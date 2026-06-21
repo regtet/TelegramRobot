@@ -11,7 +11,7 @@ module.exports = {
     : [],
 
   build: {
-    buildCommand: 'npm run build',
+    buildCommand: process.env.BUILD_COMMAND || 'npm run build:secure',
     distPath: 'dist',
     zipOutputPath: paths.buildsDir,
     autoInstall: false,

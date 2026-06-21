@@ -332,27 +332,27 @@ class Builder {
    * 执行构建
    */
   async build(progressCallback) {
-    console.log(chalk.cyan('\n🔨 开始构建...'));
+    const cmd = this.config.buildCommand || 'npm run build:secure';
+    console.log(chalk.cyan(`\n🔨 开始构建（含混淆）: ${cmd}`));
 
     if (progressCallback) {
-      progressCallback('build', 40, '🔨 正在构建项目...');
+      progressCallback('build', 40, '🔨 正在构建并混淆项目...');
     }
 
     const startTime = Date.now();
 
-    // 模拟构建进度（每15秒更新一次，确保能看到）
+    // 模拟构建进度（每15秒更新一次）；build:secure 含混淆，预估总时长略长
     const progressInterval = setInterval(async () => {
       const elapsed = (Date.now() - startTime) / 1000;
-      // 构建通常需要2-3分钟，估算进度
-      const estimatedTotal = 180; // 预估180秒
+      const estimatedTotal = 300;
       const percent = 40 + Math.min(30, Math.floor((elapsed / estimatedTotal) * 30));
 
       if (progressCallback) {
-        await progressCallback('build', percent, `🔨 正在构建项目... ${Math.floor(elapsed)}s`);
+        await progressCallback('build', percent, `🔨 正在构建并混淆... ${Math.floor(elapsed)}s`);
       }
-    }, 15000);  // 15秒更新一次
+    }, 15000);
 
-    const result = await this.runCommand(this.config.buildCommand);
+    const result = await this.runCommand(cmd);
     clearInterval(progressInterval);
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -361,7 +361,7 @@ class Builder {
       throw new Error(`构建失败: ${result.error}`);
     }
 
-    console.log(chalk.green(`✓ 构建完成 (耗时 ${duration}s)`));
+    console.log(chalk.green(`✓ 构建与混淆完成 (耗时 ${duration}s)`));
     return { duration };
   }
 
@@ -536,8 +536,8 @@ class Builder {
       await updateProgress('install', 30, '📦 检查并安装依赖...');
       await this.installDependencies();
 
-      // 4. 构建
-      await updateProgress('build', 40, '🔨 开始构建项目...');
+      // 4. 构建（含混淆：build:secure = npm run build && node obfuscate.js，runCommand 会等待整条命令结束）
+      await updateProgress('build', 40, '🔨 开始构建并混淆项目...');
       const { duration: buildDuration } = await this.build(updateProgress);
 
       // 5. 打包文件
