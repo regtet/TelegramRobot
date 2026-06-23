@@ -892,6 +892,11 @@ function isBranchAllowed(branchName) {
         return hour === 4;
     }
 
+    /** 凌晨 /apk_start_all 或「打包APK 多分支」批量 worker 是否仍在跑 */
+    function isApkBatchWorkerActive() {
+        return state.apkBatchWorkerPromise != null;
+    }
+
     if (ENABLE_APK_CRON && cronChatId) {
         setInterval(() => {
             const now = new Date();
@@ -951,24 +956,60 @@ function isBranchAllowed(branchName) {
                             '私聊触发打包失败：未配置输出群（请设置 DM_PACK_TARGET_CHAT 或 CHAT_ID/CHAT_IDS）',
                         ),
                     );
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message:
+                                '❌ 私聊打包未配置输出群\n请管理员设置 DM_PACK_TARGET_CHAT 或 CHAT_ID',
+                            linkPreview: false,
+                        });
+                    } catch (sendErr) {
+                        console.log(chalk.yellow('私聊打包配置错误提示发送失败:', sendErr.message));
+                    }
                     return;
                 }
                 const dmPackItems = parsePackCommand(text);
                 if (dmPackItems.length === 0) {
                     console.log(chalk.yellow(`私聊打包未解析到有效分支（发送者 ${senderId}）`));
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message:
+                                '❌ 未解析到有效分支\n\n用法: 打包 分支名\n示例: 打包 zg-jogok777',
+                            linkPreview: false,
+                        });
+                    } catch (sendErr) {
+                        console.log(chalk.yellow('私聊打包解析失败提示发送失败:', sendErr.message));
+                    }
                     return;
                 }
+                const dmBranchList = dmPackItems.map((p) => p.branch).join(', ');
                 console.log(
                     chalk.cyan(
-                        `📩 收到私聊打包（发送者 ${senderId}）→ 输出群 ${dmTargetChatId.toString()}，分支: ${dmPackItems
-                            .map((p) => p.branch)
-                            .join(', ')}`,
+                        `📩 收到私聊打包（发送者 ${senderId}）→ 输出群 ${dmTargetChatId.toString()}，分支: ${dmBranchList}`,
                     ),
                 );
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message:
+                            `✅ 已收到打包请求\n` +
+                            `🌿 分支：${dmBranchList}\n` +
+                            `📤 构建进度与 zip 将发送到工作群`,
+                        linkPreview: false,
+                    });
+                } catch (sendErr) {
+                    console.log(chalk.yellow('私聊打包确认反馈发送失败:', sendErr.message));
+                }
                 try {
                     await runPackBuildTargets(dmPackItems, senderId, dmTargetChatId);
                 } catch (err) {
                     console.error(chalk.red('私聊触发打包失败:'), err);
+                    try {
+                        await client.sendMessage(message.chatId, {
+                            message: `❌ 打包触发失败：${(err && err.message) || err}`,
+                            linkPreview: false,
+                        });
+                    } catch (sendErr) {
+                        console.log(chalk.yellow('私聊打包失败反馈发送失败:', sendErr.message));
+                    }
                 }
                 return;
             }
@@ -1652,7 +1693,8 @@ function isBranchAllowed(branchName) {
             );
 
             const shouldDirectApkNow = ENABLE_APK_CRON && isInApkAutoDirectWindow();
-            if (shouldDirectApkNow) {
+            const apkBatchBusy = isApkBatchWorkerActive();
+            if (shouldDirectApkNow && !apkBatchBusy) {
                 try {
                     await client.sendMessage(message.chatId, {
                         message:
@@ -1666,17 +1708,19 @@ function isBranchAllowed(branchName) {
                 await enqueueApkBuild(branchFromFile, message.chatId, {
                     applyApkBuiltDedup: true,
                 });
-            } else if (ENABLE_ZIP_PENDING) {
+            } else if ((shouldDirectApkNow && apkBatchBusy) || ENABLE_ZIP_PENDING) {
                 apkTracker.addOrUpdate(branchFromFile, {
                     source: 'zip_auto',
                     fileName,
                     chatId: message.chatId,
                     messageId: message.id,
                 });
+                const queueNotice = apkBatchBusy
+                    ? `📦 收到压缩包\n🌿 分支：${branchFromFile}\n⏳ 已加入「等待打包 APK」队列`
+                    : `📦 收到压缩包\n🌿 分支：${branchFromFile}\n✅ 已加入「等待打包 APK」队列`;
                 try {
                     await client.sendMessage(message.chatId, {
-                        message:
-                            `📦 收到压缩包\n🌿 分支：${branchFromFile}\n✅ 已加入「等待打包 APK」队列`,
+                        message: queueNotice,
                         linkPreview: false,
                     });
                 } catch (sendErr) {
