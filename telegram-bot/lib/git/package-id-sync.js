@@ -8,13 +8,18 @@ function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isNothingToCommitError(error) {
+    return /nothing to commit/i.test(String(error || ''));
+}
+
 /**
  * 改 packageId 并提交推送（最多重试 3 次）
  * @param {import('../build/builder')} builder
  * @param {number} packageId
+ * @param {string} branchName
  * @returns {Promise<{ ok: boolean, skipped: boolean, error?: string }>}
  */
-async function syncPackageIdWithGit(builder, packageId) {
+async function syncPackageIdWithGit(builder, packageId, branchName) {
     const writeResult = writePackageId(builder.projectPath, packageId);
     if (!writeResult.success) {
         return { ok: false, skipped: false, error: writeResult.error || '写入失败' };
@@ -27,21 +32,24 @@ async function syncPackageIdWithGit(builder, packageId) {
     let lastError = '';
 
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-        const addResult = await builder.runCommand('git add src/config/config.js');
-        if (!addResult.success) {
-            lastError = addResult.error || 'git add 失败';
+        const onBranch = await builder.ensureOnBranch(branchName);
+        if (!onBranch.success) {
+            lastError = onBranch.error || '无法切换到目标分支';
         } else {
-            const commitResult = await builder.runCommand(
-                `git commit -m ${JSON.stringify(commitMsg)}`,
-            );
-            if (!commitResult.success) {
-                lastError = commitResult.error || 'git commit 失败';
+            const addResult = await builder.runGit(['add', 'src/config/config.js']);
+            if (!addResult.success) {
+                lastError = addResult.error || 'git add 失败';
             } else {
-                const pushResult = await builder.runCommand('git push');
-                if (pushResult.success) {
-                    return { ok: true, skipped: false };
+                const commitResult = await builder.runGit(['commit', '-m', commitMsg]);
+                if (!commitResult.success && !isNothingToCommitError(commitResult.error)) {
+                    lastError = commitResult.error || 'git commit 失败';
+                } else {
+                    const pushResult = await builder.runGit(['push', 'origin', branchName]);
+                    if (pushResult.success) {
+                        return { ok: true, skipped: false };
+                    }
+                    lastError = pushResult.error || 'git push 失败';
                 }
-                lastError = pushResult.error || 'git push 失败';
             }
         }
 

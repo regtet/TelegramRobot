@@ -29,11 +29,12 @@ const PACK_SERVER_PROXY = {
 
 const config = require('./lib/core/config');
 const Builder = require('./lib/build/builder');
-const FileSplitter = require('./lib/build/file-splitter');
 const { extractBranchNameFromFileName, readPackageIdFromBranch } = require('./lib/core/config-reader');
 const { parsePackCommand } = require('./lib/core/parse-pack-command');
+const { normalizeDomainInput } = require('./lib/core/config-writer');
 const { syncPackageIdWithGit } = require('./lib/git/package-id-sync');
 const { syncProjectConfigWithGit } = require('./lib/git/project-config-sync');
+const { syncDomainConfigWithGit } = require('./lib/git/domain-sync');
 const { renderConfigScreenshots, tryUnlinkPngs } = require('./lib/core/config-code-image');
 const {
     parseAllowedChatIds,
@@ -46,10 +47,7 @@ const {
     buildApkFailureTelegramMessage,
     buildApkBatchSummaryText,
 } = require('./lib/apk/apk-messages');
-const {
-    formatZipAnalyzeMainDomains,
-    buildZipAnalyzeMessage,
-} = require('./lib/core/zip-analyze-message');
+const { buildZipAnalyzeMessage } = require('./lib/core/zip-analyze-message');
 const { createPackServerClient } = require('./lib/apk/pack-server');
 const { createS3Uploader } = require('./lib/apk/s3-uploader');
 const { withTimeout, gitBranchMatches, tryUnlinkIfExists } = require('./lib/core/util');
@@ -79,7 +77,6 @@ const ENABLE_TELEGRAM_NETWORK_LOG = false;
 const ENABLE_ZIP_ANALYZE = parseEnvBool('ENABLE_ZIP_ANALYZE', true);
 const ENABLE_ZIP_PENDING = parseEnvBool('ENABLE_ZIP_PENDING', true);
 const ENABLE_MANUAL_DETECT = parseEnvBool('ENABLE_MANUAL_DETECT', false);
-const ENABLE_BUILD_ZIP_ANALYZE = parseEnvBool('ENABLE_BUILD_ZIP_ANALYZE', false);
 const ENABLE_AUTO_BRANCHLIST_FROM_GROUP = parseEnvBool('ENABLE_AUTO_BRANCHLIST_FROM_GROUP', true);
 const ENABLE_LOG_ALL_MESSAGES = parseEnvBool('ENABLE_LOG_ALL_MESSAGES', false);
 const ENABLE_APK_CRON = parseEnvBool('ENABLE_APK_CRON', true);
@@ -220,6 +217,9 @@ const state = {
     currentBuildProjectName: '',
     buildQueue: [], // 普通打包（zip）排队列表
     currentBuildId: null, // 当前构建ID
+    currentBuildChatId: null,
+    /** 当前占用构建槽位的 abortToken，与 buildAbortToken 一致才视为真正进行中 */
+    activeBuildAbortToken: null,
     shouldCancelBuild: false, // 取消标志
     /** 递增后使进行中的「打包」指令失效（含分支验证阶段） */
     buildAbortToken: 0,
@@ -472,15 +472,80 @@ function isBranchAllowed(branchName) {
         }
     }
 
+    function parseDomainCommand(text) {
+        const raw = String(text || '').trim();
+        if (!raw) return null;
+        const backupPackMatch = raw.match(/^(.+?)\s+添加备用域名并打包\s+(.+)$/);
+        if (backupPackMatch) {
+            return {
+                branch: backupPackMatch[1].trim(),
+                domain: backupPackMatch[2].trim(),
+                backup: true,
+                packAfter: true,
+            };
+        }
+        const mainMatch = raw.match(/^(.+?)\s+添加域名\s+(.+)$/);
+        if (mainMatch) {
+            return {
+                branch: mainMatch[1].trim(),
+                domain: mainMatch[2].trim(),
+                backup: false,
+                packAfter: false,
+            };
+        }
+        return null;
+    }
+
     function isBuildAborted(abortToken) {
         if (state.shouldCancelBuild) return true;
         if (abortToken != null && abortToken !== state.buildAbortToken) return true;
         return false;
     }
 
+    function isBuildSlotActive() {
+        return (
+            state.isBuilding &&
+            state.activeBuildAbortToken != null &&
+            state.activeBuildAbortToken === state.buildAbortToken
+        );
+    }
+
     function requestStopAllBuilds() {
         state.buildAbortToken++;
         state.shouldCancelBuild = true;
+    }
+
+    function killActiveBuildCommands() {
+        const seen = new Set();
+        for (const proj of projects) {
+            const b = proj && proj.builder;
+            if (!b || seen.has(b)) continue;
+            seen.add(b);
+            if (typeof b.killActiveCommand === 'function') {
+                b.killActiveCommand();
+            }
+        }
+        if (builder && !seen.has(builder) && typeof builder.killActiveCommand === 'function') {
+            builder.killActiveCommand();
+        }
+    }
+
+    function releaseBuildSlotIfOwned(abortToken, buildId) {
+        const ownsToken =
+            abortToken != null && state.activeBuildAbortToken === abortToken;
+        const ownsId = buildId != null && state.currentBuildId === buildId;
+        if (!ownsToken && !ownsId) return false;
+
+        state.isBuilding = false;
+        state.currentBuildBranch = '';
+        state.currentBuildProjectName = '';
+        state.currentBuildId = null;
+        state.currentBuildChatId = null;
+        state.activeBuildAbortToken = null;
+        if (!isBuildAborted(abortToken)) {
+            state.shouldCancelBuild = false;
+        }
+        return true;
     }
 
     const TELEGRAM_SEND_FILE_TIMEOUT_MS = parseInt(
@@ -663,7 +728,7 @@ function isBranchAllowed(branchName) {
                 : chatId;
 
         const fileTask = {
-            fileName: fileName || `${branchFromFile}.zip`,
+            fileName: fileName || `${branchFromFile}.rar`,
             branchName: branchFromFile,
             actualBranchName: resolved.actualBranchName,
             project: resolved.project,
@@ -1219,6 +1284,16 @@ function isBranchAllowed(branchName) {
             // 消息过滤
             const trimmedText = text.trim();
 
+            const domainCommand = parseDomainCommand(trimmedText);
+            if (domainCommand) {
+                if (!isUserAllowed(senderId)) {
+                    console.log(chalk.red(`拒绝域名命令: 用户 ${senderId} 无权限`));
+                    return;
+                }
+                await handleDomainCommand(message, senderId, domainCommand);
+                return;
+            }
+
             // 按钮触发：✅ 打包 APK - {branch}
             if (trimmedText.startsWith('✅ 打包 APK - ')) {
                 const branchNameForApk = trimmedText.substring('✅ 打包 APK - '.length).trim();
@@ -1676,7 +1751,7 @@ function isBranchAllowed(branchName) {
                 try {
                     await client.sendMessage(message.chatId, {
                         message:
-                            `❌ 无法从压缩包文件名解析分支\n📄 文件：${fileName}\n💡 请使用形如「分支名.zip」的文件名（如 7k-porco.zip）`,
+                            `❌ 无法从压缩包文件名解析分支\n📄 文件：${fileName}\n💡 请使用形如「分支名.rar」或「分支名.zip」的文件名（如 7k-porco.rar）`,
                         linkPreview: false,
                     });
                 } catch (sendErr) {
@@ -1694,21 +1769,7 @@ function isBranchAllowed(branchName) {
 
             const shouldDirectApkNow = ENABLE_APK_CRON && isInApkAutoDirectWindow();
             const apkBatchBusy = isApkBatchWorkerActive();
-            if (shouldDirectApkNow && !apkBatchBusy) {
-                try {
-                    await client.sendMessage(message.chatId, {
-                        message:
-                            `📦 收到压缩包\n🌿 分支：${branchFromFile}\n🚀 当前处于 4:00-5:00 自动打包时段，已直接触发 APK 打包`,
-                        linkPreview: false,
-                    });
-                } catch (sendErr) {
-                    console.log(chalk.yellow('发送压缩包直打提示失败:', sendErr.message));
-                }
-
-                await enqueueApkBuild(branchFromFile, message.chatId, {
-                    applyApkBuiltDedup: true,
-                });
-            } else if ((shouldDirectApkNow && apkBatchBusy) || ENABLE_ZIP_PENDING) {
+            if (shouldDirectApkNow) {
                 apkTracker.addOrUpdate(branchFromFile, {
                     source: 'zip_auto',
                     fileName,
@@ -1716,11 +1777,28 @@ function isBranchAllowed(branchName) {
                     messageId: message.id,
                 });
                 const queueNotice = apkBatchBusy
-                    ? `📦 收到压缩包\n🌿 分支：${branchFromFile}\n⏳ 已加入「等待打包 APK」队列`
-                    : `📦 收到压缩包\n🌿 分支：${branchFromFile}\n✅ 已加入「等待打包 APK」队列`;
+                    ? `📦 收到压缩包\n🌿 分支：${branchFromFile}\n⏳ 凌晨批量 APK 进行中，已并入当前批量队列`
+                    : `📦 收到压缩包\n🌿 分支：${branchFromFile}\n🚀 4:00-5:00 时段，已加入批量 APK 打包`;
                 try {
                     await client.sendMessage(message.chatId, {
                         message: queueNotice,
+                        linkPreview: false,
+                    });
+                } catch (sendErr) {
+                    console.log(chalk.yellow('发送压缩包入队提示失败:', sendErr.message));
+                }
+                await handleBatchApkBuild([branchFromFile], message.chatId, true);
+            } else if (ENABLE_ZIP_PENDING) {
+                apkTracker.addOrUpdate(branchFromFile, {
+                    source: 'zip_auto',
+                    fileName,
+                    chatId: message.chatId,
+                    messageId: message.id,
+                });
+                try {
+                    await client.sendMessage(message.chatId, {
+                        message:
+                            `📦 收到压缩包\n🌿 分支：${branchFromFile}\n✅ 已加入「等待打包 APK」队列`,
                         linkPreview: false,
                     });
                 } catch (sendErr) {
@@ -2284,16 +2362,33 @@ function isBranchAllowed(branchName) {
         const wasBuilding = state.isBuilding;
         const wasPreparing = state.isPackPreparing;
         const clearedQueue = state.buildQueue.length;
+        const stoppedBranch = state.currentBuildBranch;
+        const stoppedChatId = state.currentBuildChatId;
+        const stoppedProjectName = state.currentBuildProjectName;
 
         requestStopAllBuilds();
         state.buildQueue = [];
+        clearPendingUploads('终止打包');
+        killActiveBuildCommands();
+
+        if (stoppedChatId && stoppedBranch) {
+            clearZipBuildBundle(stoppedChatId, stoppedBranch, '终止打包');
+        }
+
+        state.isBuilding = false;
+        state.currentBuildBranch = '';
+        state.currentBuildProjectName = '';
+        state.currentBuildId = null;
+        state.currentBuildChatId = null;
+        state.activeBuildAbortToken = null;
+        state.isPackPreparing = false;
 
         if (wasBuilding) {
             const who =
-                state.currentBuildProjectName && state.currentBuildBranch
-                    ? `${state.currentBuildProjectName}/${state.currentBuildBranch}`
-                    : state.currentBuildBranch || '…';
-            console.log(chalk.yellow(`终止打包: 正在中断 ${who} (操作者: ${senderId})`));
+                stoppedProjectName && stoppedBranch
+                    ? `${stoppedProjectName}/${stoppedBranch}`
+                    : stoppedBranch || '…';
+            console.log(chalk.yellow(`终止打包: 已中断 ${who} (操作者: ${senderId})`));
         }
         if (wasPreparing) {
             console.log(chalk.yellow(`终止打包: 已取消准备中的打包 (操作者: ${senderId})`));
@@ -2303,6 +2398,78 @@ function isBranchAllowed(branchName) {
         }
         if (!wasBuilding && !wasPreparing && clearedQueue === 0) {
             console.log(chalk.gray('终止打包: 当前无进行中的 zip 打包任务'));
+        }
+    }
+
+    async function handleDomainCommand(message, senderId, command) {
+        const branchInput = String(command.branch || '').trim();
+        const normalizedDomain = normalizeDomainInput(command.domain);
+        const label = command.backup ? '备用域名' : '主域名';
+        if (!branchInput) {
+            console.log(chalk.yellow('域名命令缺少分支名，已忽略'));
+            return;
+        }
+        if (branchInput.length > 100 || !/^[a-zA-Z0-9\-_\/\.]+$/.test(branchInput)) {
+            console.log(chalk.yellow(`域名命令分支名非法，已忽略: ${branchInput}`));
+            return;
+        }
+        if (!normalizedDomain) {
+            console.log(chalk.yellow(`域名命令域名格式非法，已忽略: ${command.domain}`));
+            return;
+        }
+
+        await tryDeleteTriggerMessage(message, command.packAfter ? '添加备用域名并打包' : '添加域名');
+        console.log(chalk.cyan(`[域名命令] ${branchInput} -> ${label} ${normalizedDomain}`));
+
+        let resolved = null;
+        try {
+            await warmProjectBranchesCache();
+            resolved = await resolveProjectAndBranch(branchInput, { reuseBranchCache: true });
+        } catch (e) {
+            console.log(chalk.yellow(`[域名命令] 解析分支失败: ${(e && e.message) || e}`));
+            return;
+        }
+        if (!resolved) {
+            console.log(chalk.yellow(`[域名命令] 未找到分支: ${branchInput}`));
+            return;
+        }
+
+        const project = resolved.project;
+        const branchName = resolved.actualBranchName;
+        const syncResult = await enqueueProjectGitWork(project.name, async () => {
+            const buildRunner = project && project.builder ? project.builder : builder;
+            const checkoutResult = await buildRunner.checkoutAndPull(branchName);
+            if (!checkoutResult || checkoutResult.success === false) {
+                throw new Error(`切换分支失败: ${(checkoutResult && checkoutResult.error) || 'unknown'}`);
+            }
+            return syncDomainConfigWithGit(buildRunner, {
+                branchName,
+                domain: normalizedDomain,
+                backup: command.backup,
+            });
+        });
+
+        if (!syncResult || !syncResult.ok) {
+            console.log(
+                chalk.red(
+                    `[域名命令] ${project.name}/${branchName} 更新${label}失败: ${(syncResult && syncResult.error) || 'unknown'}`,
+                ),
+            );
+            return;
+        }
+        if (syncResult.skipped) {
+            console.log(chalk.gray(`[域名命令] ${project.name}/${branchName} ${label}已存在，跳过提交`));
+        } else {
+            console.log(
+                chalk.green(
+                    `[域名命令] ${project.name}/${branchName} 已更新${label}: ${syncResult.domain || normalizedDomain}`,
+                ),
+            );
+        }
+
+        if (command.packAfter) {
+            console.log(chalk.cyan(`[域名命令] 触发打包: ${branchName}`));
+            await runPackBuildTargets([{ branch: branchName, packageId: null }], senderId, message.chatId);
         }
     }
 
@@ -2561,7 +2728,7 @@ function isBranchAllowed(branchName) {
             return;
         }
 
-        const provisionalFileName = `${branchName}.zip`;
+        const provisionalFileName = `${branchName}.rar`;
         const payload = await collectZipConfigAnalyzePayload({
             fileName: provisionalFileName,
             actualBranchName: branchName,
@@ -2724,10 +2891,7 @@ function isBranchAllowed(branchName) {
             console.log(chalk.yellow(`⚠ [${project.name}] 检测到未解决的合并/索引冲突，自动清理工作区后重试切换分支 ${branchName}...`));
 
             // 这两个仓库专门用于打包，允许自动强制清理本地改动
-            await project.builder.runCommand('git merge --abort');
-            await project.builder.runCommand('git rebase --abort');
-            await project.builder.runCommand('git reset --hard');
-            await project.builder.runCommand('git clean -fd');
+            await project.builder.forceCleanWorkspace();
 
             console.log(chalk.cyan(`📥 [${project.name}] 清理完成，重试切换分支 ${branchName}...`));
             const retryResult = await project.builder.runCommand(`git checkout ${branchName}`);
@@ -3905,21 +4069,65 @@ function isBranchAllowed(branchName) {
     const uploadQueue = [];
     let isUploading = false;
 
+    function clearPendingUploads(reason) {
+        const cleared = uploadQueue.length;
+        while (uploadQueue.length > 0) {
+            const task = uploadQueue.shift();
+            const cleanupPath =
+                task.result && (task.result.archiveFilePath || task.result.zipFilePath);
+            if (cleanupPath && fs.existsSync(cleanupPath)) {
+                try {
+                    fs.unlinkSync(cleanupPath);
+                } catch (_) {
+                    // ignore
+                }
+            }
+            if (task.chatId && task.branchName) {
+                clearZipBuildBundle(task.chatId, task.branchName, reason);
+            }
+        }
+        if (cleared > 0) {
+            console.log(chalk.yellow(`已清空上传队列 ${cleared} 个任务 (${reason})`));
+        }
+    }
+
     async function processUploadQueue() {
         if (isUploading) return;
         isUploading = true;
 
         while (uploadQueue.length > 0) {
             const task = uploadQueue.shift();
-            const { project, branchName, chatId, result } = task;
+            const { project, branchName, chatId, result, abortToken } = task;
             const log = (...args) => console.log(chalk.blue(`[${branchName}]`), ...args);
 
-            if (!result || !result.success || !result.zipFilePath) {
-                log(chalk.yellow('跳过上传：构建结果无效或缺少 zip 文件路径'));
+            if (abortToken != null && isBuildAborted(abortToken)) {
+                log(chalk.yellow('跳过上传：任务已终止'));
+                const skipPath = result && (result.archiveFilePath || result.zipFilePath);
+                if (skipPath && fs.existsSync(skipPath)) {
+                    try {
+                        fs.unlinkSync(skipPath);
+                    } catch (_) {
+                        // ignore
+                    }
+                }
+                clearZipBuildBundle(chatId, branchName, '构建已取消');
                 continue;
             }
 
-            // 上传 ZIP 到 Telegram，增加简单重试以应对短暂断线（Not connected / connection closed 等）
+            const archivePath =
+                result.archiveFilePath || result.zipFilePath;
+            if (!result || !result.success || !archivePath) {
+                log(chalk.yellow('跳过上传：构建结果无效或缺少压缩包路径'));
+                continue;
+            }
+
+            const archiveName =
+                result.archiveFileName ||
+                result.zipFileName ||
+                path.basename(archivePath) ||
+                `${branchName}.rar`;
+
+            // 上传压缩包到 Telegram，增加简单重试以应对短暂断线（Not connected / connection closed 等）
             let uploadSuccess = false;
             const maxUploadAttempts = 3;
             const uploadDelayMs = 3000;
@@ -3927,18 +4135,20 @@ function isBranchAllowed(branchName) {
             log('构建完成，开始上传...');
 
             for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
+                if (abortToken != null && isBuildAborted(abortToken)) {
+                    log(chalk.yellow('上传已取消：任务已终止'));
+                    clearZipBuildBundle(chatId, branchName, '构建已取消');
+                    break;
+                }
                 try {
                     log(chalk.cyan(`开始上传构建产物到 Telegram（尝试 ${attempt}/${maxUploadAttempts}）`));
                     await client.sendFile(chatId, {
-                        file: result.zipFilePath,
+                        file: archivePath,
                         forceDocument: true,
                     });
                     log(chalk.green('上传完成'));
 
-                    const zipDisplayName =
-                        result.zipFileName ||
-                        (result.zipFilePath ? path.basename(result.zipFilePath) : '') ||
-                        `${branchName}.zip`;
+                    const zipDisplayName = archiveName;
                     try {
                         const merged = await deliverZipBuildBundle(
                             chatId,
@@ -3980,8 +4190,9 @@ function isBranchAllowed(branchName) {
                 log(chalk.red('上传多次失败，放弃发送构建产物到 Telegram'));
             }
 
-            if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
-                fs.unlinkSync(result.zipFilePath);
+            const cleanupPath = result.archiveFilePath || result.zipFilePath;
+            if (cleanupPath && fs.existsSync(cleanupPath)) {
+                fs.unlinkSync(cleanupPath);
                 log('已清理临时文件');
             }
         }
@@ -3989,8 +4200,20 @@ function isBranchAllowed(branchName) {
         isUploading = false;
     }
 
-    function enqueueUploadTask(project, branchName, chatId, result) {
-        uploadQueue.push({ project, branchName, chatId, result });
+    function enqueueUploadTask(project, branchName, chatId, result, abortToken) {
+        if (abortToken != null && isBuildAborted(abortToken)) {
+            const cleanupPath = result && (result.archiveFilePath || result.zipFilePath);
+            if (cleanupPath && fs.existsSync(cleanupPath)) {
+                try {
+                    fs.unlinkSync(cleanupPath);
+                } catch (_) {
+                    // ignore
+                }
+            }
+            clearZipBuildBundle(chatId, branchName, '构建已取消');
+            return;
+        }
+        uploadQueue.push({ project, branchName, chatId, result, abortToken });
         // 异步处理上传队列，不阻塞构建队列
         processUploadQueue().catch((err) => {
             console.error(chalk.red('处理上传队列时出错:'), err);
@@ -3998,7 +4221,7 @@ function isBranchAllowed(branchName) {
     }
 
     async function handleAfterCheckoutForBuild(project, branchName, chatId, packageIdTarget) {
-        const configSyncResult = await syncProjectConfigWithGit(project.builder);
+        const configSyncResult = await syncProjectConfigWithGit(project.builder, branchName);
         if (configSyncResult.ok && configSyncResult.skipped) {
             console.log(chalk.gray(`[${branchName}] 项目配置无需修正，跳过提交`));
         } else if (configSyncResult.ok) {
@@ -4019,7 +4242,7 @@ function isBranchAllowed(branchName) {
         }
 
         if (packageIdTarget != null) {
-            const syncResult = await syncPackageIdWithGit(project.builder, packageIdTarget);
+            const syncResult = await syncPackageIdWithGit(project.builder, packageIdTarget, branchName);
             if (syncResult.ok && syncResult.skipped) {
                 console.log(chalk.gray(`[${branchName}] packageId 已是 ${packageIdTarget}，跳过提交`));
             } else if (syncResult.ok) {
@@ -4060,7 +4283,10 @@ function isBranchAllowed(branchName) {
             return { cancelled: false };
         }
 
-        state.shouldCancelBuild = false;
+        if (!isBuildAborted(abortToken)) {
+            state.shouldCancelBuild = false;
+        }
+
         const buildRunner = project && project.builder ? project.builder : builder;
         const packageIdTarget =
             buildOptions.packageId != null && Number.isFinite(buildOptions.packageId)
@@ -4094,7 +4320,10 @@ function isBranchAllowed(branchName) {
             const buildResult = await buildRunner.fullBuild(
                 branchName,
                 updateProgress,
-                fullBuildOptions,
+                {
+                    ...fullBuildOptions,
+                    shouldAbort: () => isBuildAborted(abortToken),
+                },
             );
             return buildResult;
         });
@@ -4102,11 +4331,13 @@ function isBranchAllowed(branchName) {
         // 将本次 zip 构建结果写入日志，便于排查「分支 ↔ zip」是否错位
         try {
             if (result && result.success) {
-                const zipName = result.zipFileName || '<no-zip-name>';
-                const zipPath = result.zipFilePath || '<no-zip-path>';
+                const archiveName =
+                    result.archiveFileName || result.zipFileName || '<no-archive-name>';
+                const archivePath =
+                    result.archiveFilePath || result.zipFilePath || '<no-archive-path>';
                 userBotLog.append(
                     'ZIP',
-                    `build_success ${project && project.name ? project.name : 'UNKNOWN'}/${branchName} -> ${zipName} (${zipPath})`,
+                    `build_success ${project && project.name ? project.name : 'UNKNOWN'}/${branchName} -> ${archiveName} (${archivePath})`,
                 );
             } else {
                 userBotLog.append(
@@ -4122,20 +4353,26 @@ function isBranchAllowed(branchName) {
         if (isBuildAborted(abortToken)) {
             log(chalk.yellow('任务已中断'));
             clearZipBuildBundle(chatId, branchName, '构建已取消');
-            if (result && result.zipFilePath && fs.existsSync(result.zipFilePath)) {
-                fs.unlinkSync(result.zipFilePath);
+            const cleanupPath = result && (result.archiveFilePath || result.zipFilePath);
+            if (cleanupPath && fs.existsSync(cleanupPath)) {
+                fs.unlinkSync(cleanupPath);
             }
             return { cancelled: true };
         }
 
         if (!result.success) {
+            if (result.error === 'BUILD_ABORTED') {
+                log(chalk.yellow('任务已中断'));
+                clearZipBuildBundle(chatId, branchName, '构建已取消');
+                return { cancelled: true };
+            }
             log(chalk.red(`构建失败: ${result.error}`));
             clearZipBuildBundle(chatId, branchName, '构建失败');
             return { cancelled: false };
         }
 
         // 构建成功后，将上传任务加入上传队列，立即返回让下一个构建继续
-        enqueueUploadTask(project, branchName, chatId, result);
+        enqueueUploadTask(project, branchName, chatId, result, abortToken);
 
         return { cancelled: false };
     }
@@ -4174,8 +4411,10 @@ function isBranchAllowed(branchName) {
             return;
         }
 
-        state.shouldCancelBuild = false;
         const packToken = state.buildAbortToken;
+        if (!isBuildSlotActive()) {
+            state.shouldCancelBuild = false;
+        }
         state.isPackPreparing = true;
 
         try {
@@ -4252,7 +4491,7 @@ function isBranchAllowed(branchName) {
                     continue;
                 }
 
-                if (state.isBuilding && state.currentBuildBranch === branchName) {
+                if (isBuildSlotActive() && state.currentBuildBranch === branchName) {
                     duplicateBranches.push(`${branchName} (正在打包)`);
                     continue;
                 }
@@ -4296,7 +4535,7 @@ function isBranchAllowed(branchName) {
                 const branchName = actualBranchName;
                 const buildId = Date.now().toString() + '_' + i;
 
-                if (state.isBuilding || i > 0) {
+                if (isBuildSlotActive() || i > 0) {
                     state.buildQueue.push({
                         buildId,
                         branchName,
@@ -4315,30 +4554,29 @@ function isBranchAllowed(branchName) {
                 state.currentBuildBranch = branchName;
                 state.currentBuildProjectName = project.name;
                 state.currentBuildId = buildId;
+                state.currentBuildChatId = outputChatId;
+                state.activeBuildAbortToken = packToken;
 
                 console.log(chalk.cyan(`\n开始打包项目 ${project.name} 中的分支: ${branchName} (共${validBranches.length}个)`));
                 console.log(chalk.gray(`触发用户: ${senderId}\n`));
 
                 (async () => {
+                    const localToken = packToken;
+                    const localBuildId = buildId;
                     try {
                         await executeBuild(project, branchName, senderId, outputChatId, {
                             packageId,
-                            abortToken: packToken,
+                            abortToken: localToken,
                         });
                     } catch (error) {
                         console.error(chalk.red('打包失败:'), error);
+                    } finally {
+                        releaseBuildSlotIfOwned(localToken, localBuildId);
+                        setTimeout(() => {
+                            processNextInQueue();
+                            scheduleNextQueuedFileAnalyze(1000);
+                        }, 2000);
                     }
-
-                    state.isBuilding = false;
-                    state.currentBuildBranch = '';
-                    state.currentBuildProjectName = '';
-                    state.currentBuildId = null;
-                    state.shouldCancelBuild = false;
-
-                    setTimeout(() => {
-                        processNextInQueue();
-                        scheduleNextQueuedFileAnalyze(1000);
-                    }, 2000);
                 })();
             }
         } finally {
@@ -4368,23 +4606,23 @@ function isBranchAllowed(branchName) {
         state.currentBuildBranch = nextTask.branchName;
         state.currentBuildProjectName = nextTask.project && nextTask.project.name ? nextTask.project.name : '';
         state.currentBuildId = nextTask.buildId;
+        state.currentBuildChatId = nextTask.chatId;
+        state.activeBuildAbortToken = nextTask.abortToken;
+
+        const localToken = nextTask.abortToken;
+        const localBuildId = nextTask.buildId;
 
         // 开始构建流程（不单独发消息，直接开始）
         try {
             await executeBuild(nextTask.project, nextTask.branchName, nextTask.userId, nextTask.chatId, {
                 packageId: nextTask.packageId,
-                abortToken: nextTask.abortToken,
+                abortToken: localToken,
             });
         } catch (error) {
             console.error(chalk.red('队列任务处理失败:'), error);
+        } finally {
+            releaseBuildSlotIfOwned(localToken, localBuildId);
         }
-
-        // 重置状态
-        state.isBuilding = false;
-        state.currentBuildBranch = '';
-        state.currentBuildProjectName = '';
-        state.currentBuildId = null;
-        state.shouldCancelBuild = false;
 
         // 构建刚结束，顺带通过单一驱动入口启动文件检测队列
         scheduleNextQueuedFileAnalyze(1000);

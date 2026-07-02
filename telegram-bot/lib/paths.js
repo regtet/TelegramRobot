@@ -1,8 +1,17 @@
 /**
  * 单用户号项目：持久化数据与运行时目录统一在此定义。
  *
- * data/  — session、JSON 状态（apk-pending、打包历史、分支期望等）
- * var/   — 可再生的 logs / tmp / builds
+ * data/（纳入版本库或 .gitignore 的 JSON / session）
+ *   session.txt                 — Telegram StringSession
+ *   apk-pending.json            — APK 待打包队列
+ *   apk-built-history.json      — 已打包记录（去重）
+ *   branch-package-expect.json  — 复刻台公告 → 期望分包 ID
+ *   branch-announce-pending.json — 公告第 1 条域名，待第 2 条配对
+ *
+ * var/（可再生，不提交）
+ *   logs/    — 运行日志
+ *   tmp/     — 临时文件
+ *   builds/  — 构建产物（RAR 等）
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +30,6 @@ const paths = {
     apkBuiltHistoryFile: path.join(DATA_DIR, 'apk-built-history.json'),
     branchPackageExpectFile: path.join(DATA_DIR, 'branch-package-expect.json'),
     branchAnnouncePendingFile: path.join(DATA_DIR, 'branch-announce-pending.json'),
-    branchListFile: path.join(DATA_DIR, 'branchList.json'),
     logsDir: path.join(VAR_DIR, 'logs'),
     tmpDir: path.join(VAR_DIR, 'tmp'),
     buildsDir: path.join(VAR_DIR, 'builds'),
@@ -85,8 +93,6 @@ function migrateLegacyLayout() {
     migrateFile('apk-pending.json', paths.apkPendingFile);
     migrateFile('apk-built-history.json', paths.apkBuiltHistoryFile);
     migrateFile('branch-package-expect.json', paths.branchPackageExpectFile);
-    migrateFile('branchList.json', paths.branchListFile);
-    migrateFile('zip-analyze-pending.json', path.join(DATA_DIR, 'zip-analyze-pending.json'));
     migrateDir('logs', paths.logsDir);
     migrateDir('tmp', paths.tmpDir);
     migrateDir('builds', paths.buildsDir);

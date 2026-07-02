@@ -17,11 +17,5 @@ module.exports = {
     autoInstall: false,
     autoFetchPull: true,
     allowedBranches: [],
-    strictMessageFilter: true,
-    enableFileSplit: false,
-    splitSizeThreshold: 20,
-    chunkSize: 10,
-    parallelUploads: 5,
-    compressionLevel: 1,
   },
 };

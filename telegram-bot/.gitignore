@@ -3,6 +3,7 @@ node_modules/
 .env.*
 !.env.example
 *.zip
+*.rar
 *.log
 dist/
 
@@ -10,8 +11,6 @@ dist/
 data/session.txt
 data/apk-pending.json
 data/apk-built-history.json
-data/branchList.json
-data/zip-analyze-pending.json
 
 # 运行时目录
 var/

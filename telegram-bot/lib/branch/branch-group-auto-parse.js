@@ -199,30 +199,12 @@ function tryParseReplicaConfigMessage(trimmedText, pendingHint) {
     };
 }
 
-/** @deprecated 保留旧导出；请用 tryParseBranchNameHintMessage + tryParseReplicaConfigMessage */
-function tryParseSeriesAnnounceForBranchUpdate(trimmedText, prevHostRoot) {
-    if (!prevHostRoot) return null;
-    return tryParseReplicaConfigMessage(trimmedText, {
-        branchNameHint: prevHostRoot,
-        matchTokens: hostToMatchTokens(prevHostRoot),
-    });
-}
-
-function unixSecondsToBranchTimeTokens(unixSec) {
-    const d = new Date(Number(unixSec) * 1000);
-    const h = d.getHours();
-    const mi = d.getMinutes();
-    return [`${h}.${String(mi).padStart(2, '0')}`];
-}
-
 module.exports = {
     extractHostRootFromDomainLine,
     isSingleLineDomainOnlyMessage,
     isAnnounceRelatedText,
     tryParseBranchNameHintMessage,
     tryParseReplicaConfigMessage,
-    tryParseSeriesAnnounceForBranchUpdate,
-    unixSecondsToBranchTimeTokens,
     hostToMatchTokens,
     normalizeForMatch,
     MIN_TOKEN_LEN,
